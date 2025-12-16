@@ -1,6 +1,7 @@
 "use client"
 
-import { Home, Search, ChevronDown, MoreHorizontal, LogOut, MessageCircle, Plus, FileText, Settings } from "lucide-react"
+import { useState } from "react"
+import { Home, Search, ChevronDown, MoreHorizontal, LogOut, MessageCircle, Plus, FileText, Settings, Trash2, Edit2 } from "lucide-react"
 import { useSession, signOut } from "next-auth/react"
 import { useRouter } from "next/navigation"
 
@@ -24,6 +25,8 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu"
+
+import { SearchPollsModal } from "./SearchPollsModal"
 
 // Menu items.
 const items = [
@@ -71,20 +74,110 @@ const polls = [
     id: 5,
     title: "Best Development Tool",
   },
+  {
+    id: 6,
+    title: "Preferred IDE/Editor",
+  },
+  {
+    id: 7,
+    title: "Best Frontend Framework",
+  },
+  {
+    id: 8,
+    title: "Favorite Operating System",
+  },
+  {
+    id: 9,
+    title: "Best Code Review Practice",
+  },
+  {
+    id: 10,
+    title: "Preferred Testing Framework",
+  },
+  {
+    id: 11,
+    title: "Best Database Technology",
+  },
+  {
+    id: 12,
+    title: "Favorite Version Control System",
+  },
+  {
+    id: 13,
+    title: "Best Design System Tool",
+  },
+  {
+    id: 14,
+    title: "Preferred Project Management Tool",
+  },
+  {
+    id: 15,
+    title: "Best API Documentation Tool",
+  },
+  {
+    id: 16,
+    title: "Favorite Debugging Method",
+  },
+  {
+    id: 17,
+    title: "Best Time for Standup Meetings",
+  },
+  {
+    id: 18,
+    title: "Preferred Backend Language",
+  },
+  {
+    id: 19,
+    title: "Best CSS Framework",
+  },
+  {
+    id: 20,
+    title: "Favorite Package Manager",
+  },
 ]
 
 export function Sidebar07() {
   const { data: session } = useSession()
   const router = useRouter()
+  const [hoveredPollId, setHoveredPollId] = useState<number | null>(null)
+  const [pollsList, setPollsList] = useState(polls)
+  const [renamingPollId, setRenamingPollId] = useState<number | null>(null)
+  const [newPollTitle, setNewPollTitle] = useState("")
+  const [isSearchOpen, setIsSearchOpen] = useState(false)
 
   const handleSignOut = async () => {
     await signOut({ redirect: false })
     router.push("/auth/login")
   }
 
+  const handleDeletePoll = (id: number) => {
+    setPollsList(pollsList.filter((poll) => poll.id !== id))
+    setHoveredPollId(null)
+  }
+
+  const handleRenamePoll = (id: number) => {
+    const poll = pollsList.find((p) => p.id === id)
+    if (poll) {
+      setRenamingPollId(id)
+      setNewPollTitle(poll.title)
+    }
+  }
+
+  const handleSaveRename = (id: number) => {
+    if (newPollTitle.trim()) {
+      setPollsList(
+        pollsList.map((poll) =>
+          poll.id === id ? { ...poll, title: newPollTitle } : poll
+        )
+      )
+    }
+    setRenamingPollId(null)
+    setNewPollTitle("")
+  }
+
   return (
-    <Sidebar collapsible="icon">
-      <SidebarHeader>
+    <Sidebar collapsible="icon" suppressHydrationWarning>
+      <SidebarHeader suppressHydrationWarning>
         <SidebarMenu>
           <SidebarMenuItem>
             <DropdownMenu>
@@ -112,7 +205,7 @@ export function Sidebar07() {
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarHeader>
-      <SidebarContent>
+      <SidebarContent suppressHydrationWarning>
         <SidebarGroup>
           <SidebarGroupLabel>Platform</SidebarGroupLabel>
           <SidebarGroupContent>
@@ -120,10 +213,27 @@ export function Sidebar07() {
               {items.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton asChild>
-                    <a href={item.url}>
-                      <item.icon />
-                      <span>{item.title}</span>
-                    </a>
+                    {item.title === "Search" ? (
+                      <button onClick={() => setIsSearchOpen(true)} className="hover:cursor-pointer">
+                        <item.icon />
+                        <span>{item.title}</span>
+                      </button>
+                    ) : item.title === "Create" ? (
+                      <button onClick={() => router.push("/dashboard/dashboardCreate")} className="hover:cursor-pointer">
+                        <item.icon />
+                        <span>{item.title}</span>
+                      </button>
+                    ) : item.title === "Home" ? (
+                      <button onClick={() => router.push("/dashboard")} className="hover:cursor-pointer">
+                        <item.icon />
+                        <span>{item.title}</span>
+                      </button>
+                    ) : (
+                      <a href={item.url} className="hover:cursor-pointer">
+                        <item.icon />
+                        <span>{item.title}</span>
+                      </a>
+                    )}
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
@@ -132,23 +242,74 @@ export function Sidebar07() {
         </SidebarGroup>
 
         <SidebarGroup className="flex-1">
-          <SidebarGroupLabel>Your Chats</SidebarGroupLabel>
-          <SidebarGroupContent className="flex-1 overflow-y-auto max-h-[400px]">
+          <SidebarGroupLabel>Your polls</SidebarGroupLabel>
+          <SidebarGroupContent className="flex-1 overflow-y-auto max-h-[400px] [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
             <SidebarMenu>
-              {polls.map((poll) => (
-                <SidebarMenuItem key={poll.id}>
-                  <SidebarMenuButton asChild>
-                    <a href={`#poll-${poll.id}`} className="text-sm truncate">
-                      <span className="truncate">{poll.title}</span>
-                    </a>
-                  </SidebarMenuButton>
+              {pollsList.map((poll) => (
+                <SidebarMenuItem key={poll.id} className="group">
+                  {renamingPollId === poll.id ? (
+                    <div className="flex items-center gap-2 px-2 py-1.5">
+                      <input
+                        type="text"
+                        value={newPollTitle}
+                        onChange={(e) => setNewPollTitle(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") handleSaveRename(poll.id)
+                          if (e.key === "Escape") setRenamingPollId(null)
+                        }}
+                        autoFocus
+                        className="flex-1 px-2 py-1 text-sm border rounded bg-sidebar-accent text-sidebar-accent-foreground outline-none"
+                      />
+                      <button
+                        onClick={() => handleSaveRename(poll.id)}
+                        className="text-xs px-2 py-1 bg-green-600 text-white rounded hover:bg-green-700"
+                      >
+                        Save
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-sidebar-accent group/item">
+                      <a
+                        href={`#poll-${poll.id}`}
+                        className="flex-1 text-sm truncate"
+                      >
+                        <span className="truncate">{poll.title}</span>
+                      </a>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <button
+                            className="p-1 rounded opacity-0 group-hover/item:opacity-100 hover:bg-sidebar-accent/80 transition-opacity"
+                            onClick={(e) => e.preventDefault()}
+                          >
+                            <MoreHorizontal className="size-4" />
+                          </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-40">
+                          <DropdownMenuItem
+                            onClick={() => handleRenamePoll(poll.id)}
+                          >
+                            <Edit2 className="mr-2 size-4" />
+                            <span>Rename</span>
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            onClick={() => handleDeletePoll(poll.id)}
+                            className="text-red-600"
+                          >
+                            <Trash2 className="mr-2 size-4" />
+                            <span>Delete</span>
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  )}
                 </SidebarMenuItem>
               ))}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
-      <SidebarFooter>
+      <SidebarFooter suppressHydrationWarning>
         <SidebarMenu>
           <SidebarMenuItem>
             <DropdownMenu>
@@ -188,6 +349,12 @@ export function Sidebar07() {
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>
+
+      <SearchPollsModal
+        isOpen={isSearchOpen}
+        polls={pollsList}
+        onClose={() => setIsSearchOpen(false)}
+      />
     </Sidebar>
   )
 }

@@ -2,10 +2,15 @@
 
 import React from 'react'
 import { SessionProvider } from "next-auth/react"
+import { HydrationProvider } from "./HydrationProvider"
 
-const  SationWraper = ({children}) =>  {
+const SationWraper = ({ children }) => {
   return (
-    <SessionProvider>{children}</SessionProvider>
+    <HydrationProvider>
+      <SessionProvider>
+        {children}
+      </SessionProvider>
+    </HydrationProvider>
   )
 }
 
