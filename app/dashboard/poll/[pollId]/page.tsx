@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useParams } from 'next/navigation'
 import { useRouter } from 'next/navigation'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -10,74 +10,99 @@ import PollShare from '@/components/pollsAll/PollShare'
 import PollPreviewAll from '@/components/pollsAll/pollsPreview/PollPreviewAll'
 import { Monitor, Smartphone } from 'lucide-react'
 import PollPreviewTwo from '@/components/pollsAll/pollsPreview/PollPreviewTwo'
+import { createClient } from '@/lib/supabase'
 
 interface Poll {
-  id: number
+  id: string
   title: string
-  createdDate: string
-  votes: number
-  isPublic: boolean
-  shareWithoutImage?: boolean
+  description?: string
+  poll_image_url?: string
+  created_at?: string
+  vote_count?: number
+  is_public?: boolean
+  share_without_image?: boolean
+  share_without_options?: boolean
+  allow_multiple?: boolean
+  options?: Array<{
+    id: string
+    text: string
+    image_url?: string
+    order?: number
+  }>
 }
-
-const pollsData: Poll[] = [
-  {
-    id: 1,
-    title: 'Customer Satisfaction Survey',
-    createdDate: 'July 15, 2024',
-    votes: 125,
-    isPublic: true,
-    shareWithoutImage: false,
-  },
-  {
-    id: 2,
-    title: 'Employee Feedback Form',
-    createdDate: 'June 22, 2024',
-    votes: 88,
-    isPublic: false,
-    shareWithoutImage: true,
-  },
-  {
-    id: 3,
-    title: 'Event Registration Poll',
-    createdDate: 'May 10, 2024',
-    votes: 210,
-    isPublic: true,
-    shareWithoutImage: false,
-  },
-  {
-    id: 4,
-    title: 'Product Feature Request',
-    createdDate: 'August 05, 2024',
-    votes: 156,
-    isPublic: true,
-    shareWithoutImage: false,
-  },
-  {
-    id: 5,
-    title: 'Team Preference Survey',
-    createdDate: 'July 28, 2024',
-    votes: 92,
-    isPublic: false,
-    shareWithoutImage: true,
-  },
-  {
-    id: 6,
-    title: 'Office Location Vote',
-    createdDate: 'June 12, 2024',
-    votes: 178,
-    isPublic: true,
-    shareWithoutImage: false,
-  },
-]
 
 function Page() {
   const params = useParams()
   const router = useRouter()
-  const pollId = parseInt(params.pollId as string)
+  const pollId = params.pollId as string
   const [previewMode, setPreviewMode] = useState<'pc' | 'mobile'>('pc')
+  const [poll, setPoll] = useState<Poll | null>(null)
+  const [userId, setUserId] = useState<string>('')
+  const [isLoading, setIsLoading] = useState(true)
 
-  const poll = pollsData.find((p) => p.id === pollId)
+  // Fetch poll data from Supabase
+  useEffect(() => {
+    const fetchPoll = async () => {
+      try {
+        const supabase = createClient()
+        
+        // Get current user
+        const { data: { user } } = await supabase.auth.getUser()
+        if (user) {
+          setUserId(user.id)
+        }
+        
+        const { data, error } = await supabase
+          .from('polls')
+          .select('*')
+          .eq('id', pollId)
+          .single()
+
+        if (error) {
+          console.error('Error fetching poll:', error)
+          setPoll(null)
+        } else {
+          // Fetch poll options
+          const { data: optionsData, error: optionsError } = await supabase
+            .from('poll_options')
+            .select('*')
+            .eq('poll_id', pollId)
+            .order('order', { ascending: true })
+
+          if (!optionsError && optionsData) {
+            setPoll({
+              ...data,
+              options: optionsData.map((opt: any) => ({
+                id: opt.id,
+                text: opt.text,
+                image_url: opt.image_url,
+                order: opt.order,
+              })),
+            })
+          } else {
+            setPoll(data)
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching poll:', error)
+        setPoll(null)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    if (pollId) {
+      fetchPoll()
+    }
+  }, [pollId])
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-white pt-20 flex items-center justify-center">
+        <p className="text-gray-500 text-lg">Loading poll...</p>
+      </div>
+    )
+  }
 
   if (!poll) {
     return (
@@ -103,7 +128,7 @@ function Page() {
           </TabsList>
           
           <TabsContent value="result" className="mt-2 flex-1 overflow-hidden">
-            <PollResult />
+            <PollResult poll={poll} />
           </TabsContent>
           
           <TabsContent value="preview" className="mt-2 flex-1 overflow-hidden flex flex-col">
@@ -137,8 +162,34 @@ function Page() {
             <div className="flex-1 overflow-auto flex justify-center items-start">
               {previewMode === 'pc' ? (
                 <div className="w-full max-w-4xl">
-                  {/* <PollPreviewAll showImages={!poll.shareWithoutImage} previewMode="pc" /> */}
-                  <PollPreviewTwo showImages={!poll.shareWithoutImage} previewMode="pc" />
+                  {poll.share_without_options ? (
+                    <PollPreviewTwo 
+                      pollId={pollId}
+                      userId={userId}
+                      title={poll.title}
+                      description={poll.description}
+                      bannerImage={poll.poll_image_url}
+                      previewMode="pc"
+                    />
+                  ) : (
+                    <PollPreviewAll 
+                      pollId={pollId}
+                      userId={userId}
+                      title={poll.title}
+                      description={poll.description}
+                      bannerImage={poll.poll_image_url}
+                      options={poll.options?.map(opt => ({
+                        id: opt.id,
+                        title: opt.text,
+                        image: opt.image_url || '',
+                        description: undefined,
+                      }))}
+                      showImages={true}
+                      share_without_image={poll.share_without_image}
+                      allow_multiple={poll.allow_multiple}
+                      previewMode="pc"
+                    />
+                  )}
                 </div>
               ) : (
                 <div className="pt-4">
@@ -150,8 +201,34 @@ function Page() {
                     {/* Phone Screen */}
                     <div className="bg-white rounded-2xl overflow-hidden">
                       <div className="w-full h-96 overflow-y-auto">
-                        {/* <PollPreviewAll showImages={!poll.shareWithoutImage} previewMode="mobile" /> */}
-                        <PollPreviewTwo showImages={!poll.shareWithoutImage} previewMode="mobile" />
+                        {poll.share_without_options ? (
+                          <PollPreviewTwo 
+                            pollId={pollId}
+                            userId={userId}
+                            title={poll.title}
+                            description={poll.description}
+                            bannerImage={poll.poll_image_url}
+                            previewMode="mobile"
+                          />
+                        ) : (
+                          <PollPreviewAll 
+                            pollId={pollId}
+                            userId={userId}
+                            title={poll.title}
+                            description={poll.description}
+                            bannerImage={poll.poll_image_url}
+                            options={poll.options?.map(opt => ({
+                              id: opt.id,
+                              title: opt.text,
+                              image: opt.image_url || '',
+                              description: undefined,
+                            }))}
+                            showImages={true}
+                            share_without_image={poll.share_without_image}
+                            allow_multiple={poll.allow_multiple}
+                            previewMode="mobile"
+                          />
+                        )}
                       </div>
                     </div>
                     {/* Home Button */}

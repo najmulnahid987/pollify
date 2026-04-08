@@ -4,11 +4,21 @@ import React, { useState } from 'react'
 import { Button } from '@/components/ui/button'
 
 interface PollPreviewTwoProps {
+  pollId?: string
+  userId?: string
+  title?: string
+  description?: string
+  bannerImage?: string
   showImages?: boolean
   previewMode?: 'pc' | 'mobile'
 }
 
 const PollPreviewTwo: React.FC<PollPreviewTwoProps> = ({
+  pollId = '',
+  userId = '',
+  title = 'Your Thoughts Matter',
+  description = 'We value your input to help us refine our platform. Please share any suggestions or comments you have about the recent poll results.',
+  bannerImage = 'https://lh3.googleusercontent.com/aida-public/AB6AXuCg1jribmezF2sybWlSlphrCzIOFHOmf_Yywu6OeN6c_Ldy5lhJCt0QToecd_er-J_wRk85EiS8H-W9PwF_qTSQ_Vs9vuFcaciFAhPF2-dacZ3igndEIJnzjCwLmDGErealzowcd4vvlu2eADamWM3OzzpkuHacS8D7xoZdC4yVo4kODc75kfw6uh1iIpLkLwA3JVwMo2QuSJYQTLed6m3BBQzSDwFboXNr8h85S_0QXUTMnc-DZQKbnv3aBG8LEZonAIcLpGT_ACs',
   showImages = true,
   previewMode = 'pc',
 }) => {
@@ -18,6 +28,7 @@ const PollPreviewTwo: React.FC<PollPreviewTwoProps> = ({
     feedback: '',
   })
   const [rating, setRating] = useState<number>(0)
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   const handleInputChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
@@ -29,11 +40,44 @@ const PollPreviewTwo: React.FC<PollPreviewTwoProps> = ({
     }))
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    console.log('Form submitted:', { ...formData, rating })
-    setFormData({ name: '', email: '', feedback: '' })
-    setRating(0)
+    try {
+      setIsSubmitting(true)
+
+      const response = await fetch('/api/poll-responses/create', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          pollId,
+          userId,
+          selectedOptions: [],
+          voterName: formData.name || 'Anonymous',
+          voterEmail: formData.email || 'anonymous@poll.local',
+          feedbackMessage: formData.feedback,
+        }),
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        console.error('API Error:', result)
+        throw new Error(result.error || 'Failed to submit feedback')
+      }
+
+      console.log('Feedback submitted:', result)
+      
+      // Reset form
+      setFormData({ name: '', email: '', feedback: '' })
+      setRating(0)
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      console.error('Error submitting feedback:', errorMessage)
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   return (
@@ -47,17 +91,13 @@ const PollPreviewTwo: React.FC<PollPreviewTwoProps> = ({
             <div
               className="absolute inset-0 bg-cover bg-center"
               style={{
-                backgroundImage:
-                  'url("https://lh3.googleusercontent.com/aida-public/AB6AXuCg1jribmezF2sybWlSlphrCzIOFHOmf_Yywu6OeN6c_Ldy5lhJCt0QToecd_er-J_wRk85EiS8H-W9PwF_qTSQ_Vs9vuFcaciFAhPF2-dacZ3igndEIJnzjCwLmDGErealzowcd4vvlu2eADamWM3OzzpkuHacS8D7xoZdC4yVo4kODc75kfw6uh1iIpLkLwA3JVwMo2QuSJYQTLed6m3BBQzSDwFboXNr8h85S_0QXUTMnc-DZQKbnv3aBG8LEZonAIcLpGT_ACs")',
+                backgroundImage: `url("${bannerImage}")`,
               }}
             />
             <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent" />
             <div className="absolute bottom-4 left-4 right-4">
-              <span className="px-2 py-0.5 bg-white/20 text-white text-[8px] font-bold uppercase tracking-widest rounded-full w-fit backdrop-blur-md mb-1.5 inline-block">
-                Community Voice
-              </span>
               <h1 className="text-white text-lg font-bold leading-tight tracking-tight">
-                Your Thoughts Matter
+                {title}
               </h1>
             </div>
           </div>
@@ -68,8 +108,7 @@ const PollPreviewTwo: React.FC<PollPreviewTwoProps> = ({
               Share your experience
             </h2>
             <p className="text-slate-500 dark:text-slate-400 text-xs md:text-sm mb-4 leading-tight">
-              We value your input to help us refine our platform. Please share any
-              suggestions or comments you have about the recent poll results.
+              {description}
             </p>
 
             <form onSubmit={handleSubmit} className="space-y-3">
@@ -80,7 +119,7 @@ const PollPreviewTwo: React.FC<PollPreviewTwoProps> = ({
                     className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-0.5"
                     htmlFor="name"
                   >
-                    Full Name
+                    Full Name <span className="text-slate-300">(Optional)</span>
                   </label>
                   <input
                     className="w-full px-3 py-2 rounded-lg border-2 border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 text-slate-900 dark:text-slate-100 text-sm focus:outline-0 focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
@@ -97,7 +136,7 @@ const PollPreviewTwo: React.FC<PollPreviewTwoProps> = ({
                     className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-0.5"
                     htmlFor="email"
                   >
-                    Email Address
+                    Email Address <span className="text-slate-300">(Optional)</span>
                   </label>
                   <input
                     className="w-full px-3 py-2 rounded-lg border-2 border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 text-slate-900 dark:text-slate-100 text-sm focus:outline-0 focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
@@ -117,7 +156,7 @@ const PollPreviewTwo: React.FC<PollPreviewTwoProps> = ({
                   className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-0.5"
                   htmlFor="feedback"
                 >
-                  Detailed Feedback
+                  Detailed Feedback <span className="text-slate-300">(Optional)</span>
                 </label>
                 <textarea
                   className="w-full px-3 py-2 rounded-lg border-2 border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 text-slate-900 dark:text-slate-100 text-sm focus:outline-0 focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all resize-none"
@@ -156,11 +195,28 @@ const PollPreviewTwo: React.FC<PollPreviewTwoProps> = ({
               {/* Submit Button */}
               <div className="pt-2">
                 <button
-                  className="w-full bg-primary hover:bg-blue-700 text-white font-bold py-2.5 px-6 rounded-full shadow-lg shadow-primary/30 transition-all transform hover:-translate-y-0.5 active:scale-95 flex items-center justify-center gap-2 text-sm"
+                  className={`w-full text-white font-bold py-2.5 px-6 rounded-full shadow-lg transition-all transform flex items-center justify-center gap-2 text-sm ${
+                    isSubmitting
+                      ? 'bg-blue-500 cursor-not-allowed opacity-80'
+                      : 'bg-primary hover:bg-blue-700 shadow-primary/30 hover:-translate-y-0.5 active:scale-95'
+                  }`}
                   type="submit"
+                  disabled={isSubmitting}
                 >
-                  <span>Send Feedback</span>
-                  <span>➤</span>
+                  {isSubmitting ? (
+                    <>
+                      <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      <span>Sending...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>Send Feedback</span>
+                      <span>➤</span>
+                    </>
+                  )}
                 </button>
               </div>
             </form>

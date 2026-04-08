@@ -11,6 +11,8 @@ interface PollOption {
 }
 
 interface PollPreviewAllProps {
+    pollId?: string
+    userId?: string
     title?: string
     description?: string
     bannerImage?: string
@@ -19,6 +21,8 @@ interface PollPreviewAllProps {
     engagementRate?: number
     countriesCount?: number
     showImages?: boolean
+    share_without_image?: boolean
+    allow_multiple?: boolean
     previewMode?: 'pc' | 'mobile'
 }
 
@@ -44,6 +48,8 @@ const defaultOptions: PollOption[] = [
 ]
 
 const PollPreviewAll: React.FC<PollPreviewAllProps> = ({
+    pollId = '',
+    userId = '',
     title = 'Future of Remote Work 2024',
     description = "Share your insights on how global teams are evolving. We're looking to understand the long-term preferences for digital collaboration and physical office spaces in the coming year.",
     bannerImage = 'https://lh3.googleusercontent.com/aida-public/AB6AXuC3Cxv-Uu9OMzsLzLOsKwGu8PbzO9PxSJFw6XvBNJcQdoj6DbnbK1KVGOzB-jzaASYsjAPpmNp29ARgc4ibQXHVk7duxj2wssFZAN-v5nLQN4Rtdo4RX8drAvL4K-IcuULpy7_SaQojA2wDiXgPn5GNozsePBt9F5PNXDhmvTbOCr0wye_v-lu8EM8sTmHg1TVkUOhy5BPCqldDpN54KOTO-gpdwOvT_VsSXISpjIVEEnPZNF1GBTVRuwP8gt51IIfi4d_tyoXa8Ug',
@@ -52,29 +58,115 @@ const PollPreviewAll: React.FC<PollPreviewAllProps> = ({
     engagementRate = 84,
     countriesCount = 12,
     showImages = true,
+    share_without_image = false,
+    allow_multiple = false,
     previewMode = 'pc',
 }) => {
-    const [selectedOption, setSelectedOption] = useState<string>('opt1')
+    const [selectedOption, setSelectedOption] = useState<string | string[]>(allow_multiple ? [] : 'opt1')
     const [rating, setRating] = useState<number>(0)
     const [showFeedbackModal, setShowFeedbackModal] = useState<boolean>(false)
     const [email, setEmail] = useState<string>('')
     const [feedback, setFeedback] = useState<string>('')
+    const [isSubmitting, setIsSubmitting] = useState<boolean>(false)
+
+    // Handle single option selection
+    const handleSingleSelect = (optionId: string) => {
+        setSelectedOption(optionId)
+    }
+
+    // Handle multiple option selection
+    const handleMultipleSelect = (optionId: string) => {
+        const current = selectedOption as string[]
+        if (current.includes(optionId)) {
+            setSelectedOption(current.filter(id => id !== optionId))
+        } else {
+            setSelectedOption([...current, optionId])
+        }
+    }
 
     const handleCastVote = () => {
         setShowFeedbackModal(true)
     }
 
-    const handleSubmitFeedback = () => {
-        console.log('Feedback submitted:', { email, feedback, selectedOption, rating })
-        setShowFeedbackModal(false)
-        setEmail('')
-        setFeedback('')
+    const handleSubmitFeedback = async () => {
+        try {
+            setIsSubmitting(true)
+
+            const response = await fetch('/api/poll-responses/create', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    pollId,
+                    userId,
+                    selectedOptions: Array.isArray(selectedOption) ? selectedOption : [selectedOption],
+                    voterName: email || 'Anonymous',
+                    voterEmail: email || 'anonymous@poll.local',
+                    feedbackMessage: feedback,
+                }),
+            })
+
+            const result = await response.json()
+
+            if (!response.ok) {
+                console.error('API Error:', result)
+                throw new Error(result.error || 'Failed to submit feedback')
+            }
+
+            console.log('Feedback submitted:', result)
+            
+            // Reset form
+            setShowFeedbackModal(false)
+            setEmail('')
+            setFeedback('')
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+            console.error('Error submitting feedback:', errorMessage)
+        } finally {
+            setIsSubmitting(false)
+        }
     }
 
-    const handleSkipFeedback = () => {
-        setShowFeedbackModal(false)
-        setEmail('')
-        setFeedback('')
+    const handleSkipFeedback = async () => {
+        try {
+            setIsSubmitting(true)
+
+            // Submit poll without feedback
+            const response = await fetch('/api/poll-responses/create', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    pollId,
+                    userId,
+                    selectedOptions: Array.isArray(selectedOption) ? selectedOption : [selectedOption],
+                    voterName: 'Anonymous',
+                    voterEmail: 'anonymous@poll.local',
+                    feedbackMessage: '',
+                }),
+            })
+
+            const result = await response.json()
+
+            if (!response.ok) {
+                console.error('API Error:', result)
+                throw new Error(result.error || 'Failed to submit poll')
+            }
+
+            console.log('Poll submitted without feedback:', result)
+            
+            // Reset form and close modal
+            setShowFeedbackModal(false)
+            setEmail('')
+            setFeedback('')
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+            console.error('Error submitting poll:', errorMessage)
+        } finally {
+            setIsSubmitting(false)
+        }
     }
 
     return (
@@ -93,31 +185,10 @@ const PollPreviewAll: React.FC<PollPreviewAllProps> = ({
                             <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
 
                             {/* Banner Content */}
-                            <div className="absolute bottom-2 left-3 right-3 flex justify-between items-end gap-2">
-                                <div className="flex flex-col gap-1 flex-1">
-                                    <span className="px-2 py-0.5 bg-primary text-white text-[9px] font-bold uppercase tracking-widest rounded-full w-fit backdrop-blur-sm">
-                                        Trending
-                                    </span>
-                                    <h1 className="text-white text-sm font-bold leading-tight tracking-tight drop-shadow-md line-clamp-2">
-                                        {title}
-                                    </h1>
-                                </div>
-                                <div className="flex items-center gap-1 bg-white/10 backdrop-blur-md px-2 py-1 rounded-full border border-white/20 flex-shrink-0">
-                                    <svg
-                                        className="w-3 h-3 text-white"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        viewBox="0 0 24 24"
-                                    >
-                                        <path
-                                            strokeLinecap="round"
-                                            strokeLinejoin="round"
-                                            strokeWidth={2}
-                                            d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                                        />
-                                    </svg>
-                                    <span className="text-white text-[10px] font-medium">3d left</span>
-                                </div>
+                            <div className="absolute bottom-2 left-3 right-3">
+                                <h1 className="text-white text-sm font-bold leading-tight tracking-tight drop-shadow-md line-clamp-2">
+                                    {title}
+                                </h1>
                             </div>
                         </div>
 
@@ -135,17 +206,17 @@ const PollPreviewAll: React.FC<PollPreviewAllProps> = ({
                                     Select your preference
                                 </h3>
 
-                                {showImages ? (
+                                {showImages && !share_without_image ? (
                                     // Grid with Images
                                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5">
                                         {options.map((option, index) => (
                                             <div key={option.id} className="relative group">
                                                 <input
-                                                    type="radio"
+                                                    type={allow_multiple ? "checkbox" : "radio"}
                                                     id={option.id}
-                                                    name="poll-option"
-                                                    defaultChecked={index === 0}
-                                                    onChange={() => setSelectedOption(option.id)}
+                                                    name={allow_multiple ? undefined : "poll-option"}
+                                                    checked={allow_multiple ? (selectedOption as string[]).includes(option.id) : selectedOption === option.id}
+                                                    onChange={() => allow_multiple ? handleMultipleSelect(option.id) : handleSingleSelect(option.id)}
                                                     className="peer hidden"
                                                 />
                                                 <label
@@ -160,18 +231,34 @@ const PollPreviewAll: React.FC<PollPreviewAllProps> = ({
                                                         />
                                                         <div className="absolute inset-0 bg-black/5" />
                                                         <div className="absolute top-2 right-2 size-5 rounded-full border-2 border-white bg-white/20 backdrop-blur-md flex items-center justify-center transition-all shadow-md peer-checked:bg-primary peer-checked:border-primary">
-                                                            {selectedOption === option.id && (
-                                                                <svg
-                                                                    className="w-3 h-3 text-white"
-                                                                    fill="currentColor"
-                                                                    viewBox="0 0 20 20"
-                                                                >
-                                                                    <path
-                                                                        fillRule="evenodd"
-                                                                        d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                                                                        clipRule="evenodd"
-                                                                    />
-                                                                </svg>
+                                                            {allow_multiple ? (
+                                                                (selectedOption as string[]).includes(option.id) && (
+                                                                    <svg
+                                                                        className="w-3 h-3 text-white"
+                                                                        fill="currentColor"
+                                                                        viewBox="0 0 20 20"
+                                                                    >
+                                                                        <path
+                                                                            fillRule="evenodd"
+                                                                            d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                                                                            clipRule="evenodd"
+                                                                        />
+                                                                    </svg>
+                                                                )
+                                                            ) : (
+                                                                selectedOption === option.id && (
+                                                                    <svg
+                                                                        className="w-3 h-3 text-white"
+                                                                        fill="currentColor"
+                                                                        viewBox="0 0 20 20"
+                                                                    >
+                                                                        <path
+                                                                            fillRule="evenodd"
+                                                                            d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                                                                            clipRule="evenodd"
+                                                                        />
+                                                                    </svg>
+                                                                )
                                                             )}
                                                         </div>
                                                     </div>
@@ -192,36 +279,57 @@ const PollPreviewAll: React.FC<PollPreviewAllProps> = ({
                                         {options.map((option, index) => (
                                             <div key={option.id} className="relative group">
                                                 <input
-                                                    type="radio"
+                                                    type={allow_multiple ? "checkbox" : "radio"}
                                                     id={option.id}
-                                                    name="poll-option"
-                                                    defaultChecked={index === 0}
-                                                    onChange={() => setSelectedOption(option.id)}
+                                                    name={allow_multiple ? undefined : "poll-option"}
+                                                    checked={allow_multiple ? (selectedOption as string[]).includes(option.id) : selectedOption === option.id}
+                                                    onChange={() => allow_multiple ? handleMultipleSelect(option.id) : handleSingleSelect(option.id)}
                                                     className="peer hidden"
                                                 />
                                                 <label
                                                     htmlFor={option.id}
                                                     className="flex items-center gap-3 p-3 rounded-xl border-2 border-slate-100 dark:border-slate-800 cursor-pointer transition-all hover:border-primary/40 hover:shadow-md peer-checked:border-primary peer-checked:ring-2 peer-checked:ring-primary peer-checked:bg-blue-50 dark:peer-checked:bg-slate-800/50"
                                                 >
-                                                    {/* Radio Button */}
-                                                    <div className={`flex-shrink-0 size-5 rounded-full border-2 flex items-center justify-center transition-all ${
-                                                        selectedOption === option.id
-                                                            ? 'border-primary bg-primary'
-                                                            : 'border-slate-300 bg-white dark:bg-slate-900'
-                                                    }`}>
-                                                        {selectedOption === option.id && (
-                                                            <svg
-                                                                className="w-3 h-3 text-white fill-white"
-                                                                viewBox="0 0 20 20"
-                                                            >
-                                                                <path
-                                                                    fillRule="evenodd"
-                                                                    d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                                                                    clipRule="evenodd"
-                                                                />
-                                                            </svg>
-                                                        )}
-                                                    </div>
+                                                    {/* Checkbox/Radio Button */}
+                                                    {allow_multiple ? (
+                                                        <div className={`flex-shrink-0 size-5 rounded-md border-2 flex items-center justify-center transition-all ${
+                                                            (selectedOption as string[]).includes(option.id)
+                                                                ? 'border-primary bg-primary'
+                                                                : 'border-slate-300 bg-white dark:bg-slate-900'
+                                                        }`}>
+                                                            {(selectedOption as string[]).includes(option.id) && (
+                                                                <svg
+                                                                    className="w-3 h-3 text-white fill-white"
+                                                                    viewBox="0 0 20 20"
+                                                                >
+                                                                    <path
+                                                                        fillRule="evenodd"
+                                                                        d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                                                                        clipRule="evenodd"
+                                                                    />
+                                                                </svg>
+                                                            )}
+                                                        </div>
+                                                    ) : (
+                                                        <div className={`flex-shrink-0 size-5 rounded-full border-2 flex items-center justify-center transition-all ${
+                                                            selectedOption === option.id
+                                                                ? 'border-primary bg-primary'
+                                                                : 'border-slate-300 bg-white dark:bg-slate-900'
+                                                        }`}>
+                                                            {selectedOption === option.id && (
+                                                                <svg
+                                                                    className="w-3 h-3 text-white fill-white"
+                                                                    viewBox="0 0 20 20"
+                                                                >
+                                                                    <path
+                                                                        fillRule="evenodd"
+                                                                        d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                                                                        clipRule="evenodd"
+                                                                    />
+                                                                </svg>
+                                                            )}
+                                                        </div>
+                                                    )}
 
                                                     {/* Text Content */}
                                                     <div className="flex flex-col gap-0.5 grow">
@@ -309,7 +417,7 @@ const PollPreviewAll: React.FC<PollPreviewAllProps> = ({
                         <div className="flex flex-col gap-3">
                             {/* Email Field */}
                             <label className="flex flex-col w-full">
-                                <p className="text-slate-900 dark:text-slate-100 text-xs font-bold leading-normal pb-1">Email</p>
+                                <p className="text-slate-900 dark:text-slate-100 text-xs font-bold leading-normal pb-1">Email <span className="text-slate-400">(Optional)</span></p>
                                 <input
                                     type="email"
                                     value={email}
@@ -322,7 +430,7 @@ const PollPreviewAll: React.FC<PollPreviewAllProps> = ({
 
                             {/* Feedback Field */}
                             <label className="flex flex-col w-full">
-                                <p className="text-slate-900 dark:text-slate-100 text-xs font-bold leading-normal pb-1">Detailed Feedback</p>
+                                <p className="text-slate-900 dark:text-slate-100 text-xs font-bold leading-normal pb-1">Detailed Feedback <span className="text-slate-400">(Optional)</span></p>
                                 <textarea
                                     value={feedback}
                                     onChange={(e) => setFeedback(e.target.value)}
@@ -337,18 +445,38 @@ const PollPreviewAll: React.FC<PollPreviewAllProps> = ({
                         <div className="flex justify-center pt-1">
                             <button
                                 onClick={handleSubmitFeedback}
-                                className="w-full bg-primary hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-full shadow-lg shadow-primary/30 transition-all transform hover:-translate-y-0.5 active:scale-95 flex items-center justify-center gap-2 text-sm">
-                                <span className="truncate">Submit</span>
+                                disabled={isSubmitting}
+                                className={`w-full text-white font-bold py-2 px-6 rounded-full shadow-lg transition-all transform flex items-center justify-center gap-2 text-sm ${
+                                    isSubmitting
+                                        ? 'bg-blue-500 cursor-not-allowed opacity-80'
+                                        : 'bg-primary hover:bg-blue-700 shadow-primary/30 hover:-translate-y-0.5 active:scale-95'
+                                }`}>
+                                {isSubmitting ? (
+                                    <>
+                                        <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                        </svg>
+                                        <span className="truncate">Submitting...</span>
+                                    </>
+                                ) : (
+                                    <span className="truncate">Submit</span>
+                                )}
                             </button>
                         </div>
 
                         {/* Skip Link */}
-                        <p
+                        <button
                             onClick={handleSkipFeedback}
-                            className="text-slate-400 dark:text-slate-500 text-xs font-medium leading-normal text-center underline cursor-pointer hover:text-primary dark:hover:text-primary transition-colors"
+                            disabled={isSubmitting}
+                            className={`w-full text-xs font-medium leading-normal text-center underline transition-colors ${
+                                isSubmitting
+                                    ? 'text-slate-300 dark:text-slate-600 cursor-not-allowed'
+                                    : 'text-slate-400 dark:text-slate-500 hover:text-primary dark:hover:text-primary cursor-pointer'
+                            }`}
                         >
                             No thanks, maybe later
-                        </p>
+                        </button>
                     </div>
                 </div>
             )}

@@ -9,13 +9,14 @@ import { MessageCircle } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 
-export default function LoginPage() {
+export default function SignupPage() {
   const { user, isLoading: authLoading } = useAuth()
   const router = useRouter()
   const supabase = createClient()
 
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
+  const [fullName, setFullName] = useState("")
   const [error, setError] = useState("")
   const [isLoading, setIsLoading] = useState(false)
 
@@ -23,29 +24,37 @@ export default function LoginPage() {
   useEffect(() => {
     if (!authLoading && user) {
       console.log("✅ Already authenticated!")
-      console.log("👤 User email:", user.email)
-      console.log("🎉 Welcome to Pollify!", user)
       router.push("/dashboard")
     }
   }, [user, authLoading, router])
 
-  const handleEmailLogin = async (e: React.FormEvent) => {
+  const handleEmailSignup = async (e: React.FormEvent) => {
     e.preventDefault()
     setError("")
     setIsLoading(true)
 
     try {
-      console.log("🔄 Starting email login...")
-      const { error } = await supabase.auth.signInWithPassword({
+      console.log("🔄 Starting email signup...")
+
+      // Sign up user
+      const { data, error: signupError } = await supabase.auth.signUp({
         email,
         password,
+        options: {
+          data: {
+            full_name: fullName,
+          },
+        },
       })
 
-      if (error) {
-        console.error("❌ Login error:", error.message)
-        setError(error.message)
-      } else {
-        console.log("✅ Email login successful!")
+      if (signupError) {
+        console.error("❌ Signup error:", signupError.message)
+        setError(signupError.message)
+      } else if (data.user) {
+        console.log("✅ Email signup successful!")
+        console.log("👤 New user:", data.user.email)
+        
+        // Redirect to dashboard (user is already signed in after signup)
         router.push("/dashboard")
       }
     } catch (err) {
@@ -56,9 +65,9 @@ export default function LoginPage() {
     }
   }
 
-  const handleGithubLogin = async () => {
+  const handleGithubSignup = async () => {
     try {
-      console.log("🔄 Starting GitHub login...")
+      console.log("🔄 Starting GitHub signup...")
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "github",
         options: {
@@ -67,7 +76,7 @@ export default function LoginPage() {
       })
 
       if (error) {
-        console.error("❌ GitHub login error:", error)
+        console.error("❌ GitHub signup error:", error)
         setError(error.message)
       }
     } catch (error) {
@@ -76,9 +85,9 @@ export default function LoginPage() {
     }
   }
 
-  const handleGoogleLogin = async () => {
+  const handleGoogleSignup = async () => {
     try {
-      console.log("🔄 Starting Google login...")
+      console.log("🔄 Starting Google signup...")
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
@@ -87,7 +96,7 @@ export default function LoginPage() {
       })
 
       if (error) {
-        console.error("❌ Google login error:", error)
+        console.error("❌ Google signup error:", error)
         setError(error.message)
       }
     } catch (error) {
@@ -114,21 +123,38 @@ export default function LoginPage() {
           {/* Heading */}
           <div>
             <h2 className="mt-6 text-center text-3xl font-bold tracking-tight text-gray-900">
-              Log in to Pollify
+              Create your Pollify account
             </h2>
             <p className="mt-2 text-center text-sm text-gray-600">
-              Sign in with your email and password or continue with OAuth
+              Sign up with your email or continue with OAuth
             </p>
           </div>
 
           {/* Email/Password Form */}
-          <form onSubmit={handleEmailLogin} className="space-y-4">
+          <form onSubmit={handleEmailSignup} className="space-y-4">
             {/* Error Message */}
             {error && (
               <div className="rounded-md bg-red-50 p-4">
                 <p className="text-sm font-medium text-red-800">{error}</p>
               </div>
             )}
+
+            {/* Full Name Input */}
+            <div>
+              <label htmlFor="fullName" className="block text-sm font-medium text-gray-700">
+                Full name
+              </label>
+              <Input
+                id="fullName"
+                type="text"
+                placeholder="John Doe"
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                required
+                disabled={isLoading}
+                className="mt-1 block w-full px-3 py-2 rounded-md border border-gray-300 shadow-sm focus:border-blue-500 focus:outline-none"
+              />
+            </div>
 
             {/* Email Input */}
             <div>
@@ -170,7 +196,7 @@ export default function LoginPage() {
               disabled={isLoading}
               className="w-full py-6 px-4 text-sm font-semibold rounded-lg bg-blue-600 hover:bg-blue-700 text-white shadow-sm disabled:opacity-50"
             >
-              {isLoading ? "Signing in..." : "Sign in with Email"}
+              {isLoading ? "Creating account..." : "Sign up with Email"}
             </Button>
           </form>
 
@@ -185,7 +211,7 @@ export default function LoginPage() {
           <div className="space-y-4">
             {/* Google Button */}
             <Button
-              onClick={handleGoogleLogin}
+              onClick={handleGoogleSignup}
               disabled={isLoading}
               type="button"
               size="lg"
@@ -208,7 +234,7 @@ export default function LoginPage() {
 
             {/* GitHub Button */}
             <Button
-              onClick={handleGithubLogin}
+              onClick={handleGithubSignup}
               disabled={isLoading}
               type="button"
               size="lg"
@@ -227,19 +253,13 @@ export default function LoginPage() {
           </div>
 
           {/* Footer Links */}
-          <div className="flex flex-col items-center justify-center text-sm gap-4">
+          <div className="text-center text-sm">
             <p className="text-gray-600">
-              Don't have an account?{" "}
-              <Link href="/auth/signup" className="font-medium text-blue-600 hover:text-blue-700">
-                Sign up
+              Already have an account?{" "}
+              <Link href="/auth/login" className="font-medium text-blue-600 hover:text-blue-700">
+                Log in
               </Link>
             </p>
-            <Link
-              href="#"
-              className="font-medium text-blue-600 hover:text-blue-700"
-            >
-              Forgot password?
-            </Link>
           </div>
         </div>
       </main>

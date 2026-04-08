@@ -1,12 +1,13 @@
 'use client'
 
 import React, { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
-import { X, Plus, Trash2, ImagePlus } from 'lucide-react'
+import { X, Plus, Trash2, ImagePlus, Loader2 } from 'lucide-react'
 
 interface PollOption {
   text: string
@@ -14,6 +15,7 @@ interface PollOption {
 }
 
 export default function CreatePollPage() {
+  const router = useRouter()
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [pollImage, setPollImage] = useState<string | null>(null)
@@ -23,10 +25,12 @@ export default function CreatePollPage() {
   ])
   const [settings, setSettings] = useState({
     allowMultiple: false,
-    shareWithoutOpinion: false,
-    keepRateOnly: false,
+    shareWithoutImage: false,
+    shareWithoutOptions: false,
   })
   const [selectedImagePopup, setSelectedImagePopup] = useState<string | null>(null)
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const addOption = () => {
     setOptions([...options, { text: '', image: null }])
@@ -79,23 +83,83 @@ export default function CreatePollPage() {
     })
   }
 
-  const handleSavePoll = (e: React.FormEvent) => {
+  const convertBase64ToFile = (base64: string, filename: string): File => {
+    const arr = base64.split(',')
+    const mime = arr[0].match(/:(.*?);/)?.[1] || 'image/jpeg'
+    const bstr = atob(arr[1])
+    const n = bstr.length
+    const u8arr = new Uint8Array(n)
+    for (let i = 0; i < n; i++) {
+      u8arr[i] = bstr.charCodeAt(i)
+    }
+    return new File([u8arr], filename, { type: mime })
+  }
+
+  const handleSavePoll = async (e: React.FormEvent) => {
     e.preventDefault()
     
     // Validate that an image is uploaded
     if (!pollImage) {
-      alert('Please upload an image for the poll')
+      setError('Please upload an image for the poll')
       return
     }
-    
-    console.log({
-      title,
-      description,
-      pollImage,
-      options: options.filter(opt => opt.text.trim() !== ''),
-      settings,
-    })
-    // TODO: Add API call to save poll
+
+    // Validate title
+    if (!title.trim()) {
+      setError('Poll title is required')
+      return
+    }
+
+    // Validate options if not in feedback mode
+    if (!settings.shareWithoutOptions && !settings.shareWithoutImage) {
+      const nonEmptyOptions = options.filter(opt => opt.text.trim() !== '')
+      if (nonEmptyOptions.length < 2) {
+        setError('Please add at least 2 options')
+        return
+      }
+    }
+
+    setIsLoading(true)
+    setError(null)
+
+    try {
+      // Create FormData for API submission
+      const formData = new FormData()
+      formData.append('title', title)
+      formData.append('description', description)
+      
+      // Convert base64 poll image to File
+      const pollImageFile = convertBase64ToFile(pollImage, `poll-${Date.now()}.jpg`)
+      formData.append('pollImage', pollImageFile)
+
+      // Add options data
+      formData.append('options', JSON.stringify(options))
+      
+      // Add settings data
+      formData.append('settings', JSON.stringify(settings))
+
+      // Call API endpoint
+      const response = await fetch('/api/polls/create', {
+        method: 'POST',
+        body: formData,
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to create poll')
+      }
+
+      const { pollId } = await response.json()
+
+      // Success - redirect to poll detail page
+      router.push(`/dashboard/poll/${pollId}`)
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Something went wrong'
+      setError(errorMessage)
+      console.error('Error creating poll:', err)
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   return (
@@ -188,7 +252,7 @@ export default function CreatePollPage() {
               </div>
 
               {/* Options */}
-              {!settings.keepRateOnly && (
+              {!settings.shareWithoutOptions && (
                 <>
                   <div className="space-y-3">
                     <Label className="text-sm font-semibold text-gray-900 block text-center">Options</Label>
@@ -197,7 +261,7 @@ export default function CreatePollPage() {
                         {/* Input Row with Image Upload and Delete */}
                         <div className="flex items-center space-x-3">
                           {/* Image Upload Button / Thumbnail */}
-                          {!settings.shareWithoutOpinion && (
+                          {!settings.shareWithoutImage && (
                             <>
                               {option.image ? (
                                 <button
@@ -304,8 +368,8 @@ export default function CreatePollPage() {
               <div className="flex items-start gap-3 w-full">
                 <Checkbox
                   id="share-without-image"
-                  checked={settings.shareWithoutOpinion}
-                  onCheckedChange={() => handleSettingChange('shareWithoutOpinion')}
+                  checked={settings.shareWithoutImage}
+                  onCheckedChange={() => handleSettingChange('shareWithoutImage')}
                   className="mt-1 h-4 w-4"
                 />
                 <div>
@@ -316,16 +380,16 @@ export default function CreatePollPage() {
                 </div>
               </div>
 
-              {/* Keep Rate Only */}
+              {/* Share Without Options */}
               <div className="flex items-start gap-3 w-full">
                 <Checkbox
-                  id="keep-rate-only"
-                  checked={settings.keepRateOnly}
-                  onCheckedChange={() => handleSettingChange('keepRateOnly')}
+                  id="share-without-options"
+                  checked={settings.shareWithoutOptions}
+                  onCheckedChange={() => handleSettingChange('shareWithoutOptions')}
                   className="mt-1 h-4 w-4"
                 />
                 <div>
-                  <Label htmlFor="keep-rate-only" className="font-semibold text-gray-900 cursor-pointer block text-sm">
+                  <Label htmlFor="share-without-options" className="font-semibold text-gray-900 cursor-pointer block text-sm">
                     Share Without Options
                   </Label>
                   <p className="text-sm text-gray-600 mt-1">Users can quickly share feedback by providing their name, email</p>
@@ -333,13 +397,28 @@ export default function CreatePollPage() {
               </div>
 
               {/* Save Button */}
-              <div className="mt-6 pt-4 border-t border-gray-200 flex justify-center">
-                <Button
-                  type="submit"
-                  className="bg-blue-600 text-white px-6 py-2 rounded-lg font-semibold text-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-opacity-50 transition ease-in-out duration-150 shadow-lg shadow-blue-500/20"
-                >
-                  Save Poll
-                </Button>
+              <div className="mt-6 pt-4 border-t border-gray-200">
+                {error && (
+                  <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+                    <p className="text-sm text-red-600">{error}</p>
+                  </div>
+                )}
+                <div className="flex justify-center">
+                  <Button
+                    type="submit"
+                    disabled={isLoading}
+                    className="bg-blue-600 text-white px-6 py-2 rounded-lg font-semibold text-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-opacity-50 transition ease-in-out duration-150 shadow-lg shadow-blue-500/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                    {isLoading ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Creating...
+                      </>
+                    ) : (
+                      'Save Poll'
+                    )}
+                  </Button>
+                </div>
               </div>
             </form>
           </div>

@@ -1,8 +1,21 @@
 import { Button } from "@/components/ui/button"
 import { MessageCircle } from "lucide-react"
 import Link from "next/link"
+import { redirect } from "next/navigation"
+import { createSupabaseServerClient } from "@/lib/supabase-server"
 
-export default function LandingPage() {
+export default async function LandingPage() {
+  // Check if user is authenticated
+  const supabase = await createSupabaseServerClient()
+  const {
+    data: { session },
+  } = await supabase.auth.getSession()
+
+  // If authenticated, redirect to dashboard
+  if (session) {
+    redirect("/dashboard")
+  }
+
   return (
     <div className="relative min-h-screen w-full bg-white">
       {/* Header */}

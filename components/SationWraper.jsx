@@ -1,15 +1,15 @@
 "use client"
 
 import React from 'react'
-import { SessionProvider } from "next-auth/react"
+import { AuthProvider } from "@/app/auth/AuthProvider"
 import { HydrationProvider } from "./HydrationProvider"
 
 const SationWraper = ({ children }) => {
   return (
     <HydrationProvider>
-      <SessionProvider>
+      <AuthProvider>
         {children}
-      </SessionProvider>
+      </AuthProvider>
     </HydrationProvider>
   )
 }
