@@ -101,9 +101,10 @@ const PollPreviewAll: React.FC<PollPreviewAllProps> = ({
                     pollId,
                     userId,
                     selectedOptions: Array.isArray(selectedOption) ? selectedOption : [selectedOption],
-                    voterName: email || 'Anonymous',
+                    voterName: 'Anonymous',
                     voterEmail: email || 'anonymous@poll.local',
                     feedbackMessage: feedback,
+                    rating: rating || 0,
                 }),
             })
 
@@ -143,8 +144,9 @@ const PollPreviewAll: React.FC<PollPreviewAllProps> = ({
                     userId,
                     selectedOptions: Array.isArray(selectedOption) ? selectedOption : [selectedOption],
                     voterName: 'Anonymous',
-                    voterEmail: 'anonymous@poll.local',
+                    voterEmail: email || 'anonymous@poll.local',
                     feedbackMessage: '',
+                    rating: rating || 0,
                 }),
             })
 
@@ -177,18 +179,20 @@ const PollPreviewAll: React.FC<PollPreviewAllProps> = ({
                     {/* Poll Card */}
                     <div className="bg-white dark:bg-slate-900 rounded-xl shadow-lg shadow-slate-200/30 dark:shadow-none border border-slate-100 dark:border-slate-800 overflow-hidden">
                         {/* Banner */}
-                        <div className="relative h-32 w-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+                        <div className="relative h-40 sm:h-48 md:h-56 w-full bg-gradient-to-br from-slate-200 to-slate-300 dark:from-slate-800 dark:to-slate-700 overflow-hidden">
                             <div
                                 className="absolute inset-0 bg-cover bg-center"
                                 style={{ backgroundImage: `url('${bannerImage}')` }}
                             />
-                            <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-black/10" />
 
                             {/* Banner Content */}
-                            <div className="absolute bottom-2 left-3 right-3">
-                                <h1 className="text-white text-sm font-bold leading-tight tracking-tight drop-shadow-md line-clamp-2">
-                                    {title}
-                                </h1>
+                            <div className="absolute inset-0 flex items-end">
+                                <div className="w-full p-4 sm:p-6 md:p-8">
+                                    <h1 className="text-white text-lg sm:text-xl md:text-2xl font-bold leading-tight tracking-tight drop-shadow-lg line-clamp-2">
+                                        {title}
+                                    </h1>
+                                </div>
                             </div>
                         </div>
 
@@ -356,6 +360,7 @@ const PollPreviewAll: React.FC<PollPreviewAllProps> = ({
                                     {[1, 2, 3, 4, 5].map((star) => (
                                         <button
                                             key={star}
+                                            type="button"
                                             onClick={() => setRating(star)}
                                             className={`text-sm p-1 rounded-md hover:scale-110 transition-all ${
                                                 star <= rating
@@ -404,6 +409,7 @@ const PollPreviewAll: React.FC<PollPreviewAllProps> = ({
                         {/* Header */}
                         <div className="flex items-center justify-between">
                             <button
+                                type="button"
                                 onClick={handleSkipFeedback}
                                 className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
                             >
@@ -444,6 +450,7 @@ const PollPreviewAll: React.FC<PollPreviewAllProps> = ({
                         {/* Submit Button */}
                         <div className="flex justify-center pt-1">
                             <button
+                                type="button"
                                 onClick={handleSubmitFeedback}
                                 disabled={isSubmitting}
                                 className={`w-full text-white font-bold py-2 px-6 rounded-full shadow-lg transition-all transform flex items-center justify-center gap-2 text-sm ${
@@ -467,6 +474,7 @@ const PollPreviewAll: React.FC<PollPreviewAllProps> = ({
 
                         {/* Skip Link */}
                         <button
+                            type="button"
                             onClick={handleSkipFeedback}
                             disabled={isSubmitting}
                             className={`w-full text-xs font-medium leading-normal text-center underline transition-colors ${

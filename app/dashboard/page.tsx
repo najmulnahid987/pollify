@@ -1,13 +1,14 @@
 'use client'
 
-import React, { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import React, { useState, useEffect } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
 import { X, Plus, Trash2, ImagePlus, Loader2 } from 'lucide-react'
+import { createClient } from '@/lib/supabase'
 
 interface PollOption {
   text: string
@@ -16,6 +17,9 @@ interface PollOption {
 
 export default function CreatePollPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const pollId = searchParams?.get('pollId')
+  
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [pollImage, setPollImage] = useState<string | null>(null)
@@ -31,6 +35,82 @@ export default function CreatePollPage() {
   const [selectedImagePopup, setSelectedImagePopup] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [isEditMode, setIsEditMode] = useState(false)
+  const [pageLoading, setPageLoading] = useState(true)
+
+  // Fetch poll data if in edit mode
+  useEffect(() => {
+    const fetchPollData = async () => {
+      if (!pollId) {
+        setPageLoading(false)
+        return
+      }
+
+      try {
+        setIsEditMode(true)
+        const supabase = createClient()
+
+        // Fetch poll data
+        const { data: pollData, error: pollError } = await supabase
+          .from('polls')
+          .select('*')
+          .eq('id', pollId)
+          .single()
+
+        if (pollError) {
+          console.error('Error fetching poll:', pollError)
+          setError('Failed to load poll data')
+          setPageLoading(false)
+          return
+        }
+
+        // Fetch poll options
+        const { data: optionsData, error: optionsError } = await supabase
+          .from('poll_options')
+          .select('*')
+          .eq('poll_id', pollId)
+          .order('id', { ascending: true })
+
+        if (optionsError) {
+          console.error('Error fetching options:', optionsError)
+        }
+
+        // Populate form with fetched data
+        setTitle(pollData.title || '')
+        setDescription(pollData.description || '')
+        
+        // Set poll image
+        if (pollData.poll_image_url) {
+          setPollImage(pollData.poll_image_url)
+        }
+
+        // Set options
+        if (optionsData && optionsData.length > 0) {
+          setOptions(
+            optionsData.map((opt: any) => ({
+              text: opt.text || '',
+              image: opt.image_url || null,
+            }))
+          )
+        }
+
+        // Set settings
+        setSettings({
+          allowMultiple: pollData.allow_multiple || false,
+          shareWithoutImage: pollData.share_without_image || false,
+          shareWithoutOptions: pollData.share_without_options || false,
+        })
+
+        setPageLoading(false)
+      } catch (error) {
+        console.error('Error loading poll:', error)
+        setError('Failed to load poll data')
+        setPageLoading(false)
+      }
+    }
+
+    fetchPollData()
+  }, [pollId])
 
   const addOption = () => {
     setOptions([...options, { text: '', image: null }])
@@ -123,40 +203,64 @@ export default function CreatePollPage() {
     setError(null)
 
     try {
-      // Create FormData for API submission
-      const formData = new FormData()
-      formData.append('title', title)
-      formData.append('description', description)
-      
-      // Convert base64 poll image to File
-      const pollImageFile = convertBase64ToFile(pollImage, `poll-${Date.now()}.jpg`)
-      formData.append('pollImage', pollImageFile)
+      if (isEditMode && pollId) {
+        // Update existing poll
+        const response = await fetch(`/api/polls/${pollId}/update`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            title,
+            description,
+            pollImage,
+            options,
+            settings,
+          }),
+        })
 
-      // Add options data
-      formData.append('options', JSON.stringify(options))
-      
-      // Add settings data
-      formData.append('settings', JSON.stringify(settings))
+        if (!response.ok) {
+          const errorData = await response.json()
+          throw new Error(errorData.error || 'Failed to update poll')
+        }
 
-      // Call API endpoint
-      const response = await fetch('/api/polls/create', {
-        method: 'POST',
-        body: formData,
-      })
+        router.push(`/dashboard/poll/${pollId}`)
+      } else {
+        // Create new poll
+        const formData = new FormData()
+        formData.append('title', title)
+        formData.append('description', description)
+        
+        // Convert base64 poll image to File
+        const pollImageFile = convertBase64ToFile(pollImage, `poll-${Date.now()}.jpg`)
+        formData.append('pollImage', pollImageFile)
 
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || 'Failed to create poll')
+        // Add options data
+        formData.append('options', JSON.stringify(options))
+        
+        // Add settings data
+        formData.append('settings', JSON.stringify(settings))
+
+        // Call API endpoint
+        const response = await fetch('/api/polls/create', {
+          method: 'POST',
+          body: formData,
+        })
+
+        if (!response.ok) {
+          const errorData = await response.json()
+          throw new Error(errorData.error || 'Failed to create poll')
+        }
+
+        const { pollId: newPollId } = await response.json()
+
+        // Success - redirect to poll detail page
+        router.push(`/dashboard/poll/${newPollId}`)
       }
-
-      const { pollId } = await response.json()
-
-      // Success - redirect to poll detail page
-      router.push(`/dashboard/poll/${pollId}`)
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Something went wrong'
       setError(errorMessage)
-      console.error('Error creating poll:', err)
+      console.error('Error saving poll:', err)
     } finally {
       setIsLoading(false)
     }
@@ -166,12 +270,22 @@ export default function CreatePollPage() {
     <div className="min-h-screen bg-transparent">
       <main className="">
         <div className="mb-12 sm:mb-16 pt-2 sm:pt-3 px-4 sm:px-6 text-center">
-          <h1 className="text-lg sm:text-xl font-bold text-gray-900">Create a New Poll</h1>
-          <p className="text-xs sm:text-sm text-gray-600 mt-1">Fill out the details below to create your poll.</p>
+          <h1 className="text-lg sm:text-xl font-bold text-gray-900">
+            {isEditMode ? 'Edit Poll' : 'Create a New Poll'}
+          </h1>
+          <p className="text-xs sm:text-sm text-gray-600 mt-1">
+            {isEditMode ? 'Update the details of your poll.' : 'Fill out the details below to create your poll.'}
+          </p>
         </div>
-        <div className="w-full h-full flex flex-col lg:flex-row gap-6 lg:gap-8 px-4 sm:px-6 lg:px-8 pb-8 justify-center items-center">
-          {/* Left Section - Poll Creation */}
-          <div className="flex-1 min-w-0 max-w-md flex flex-col items-center">
+
+        {pageLoading ? (
+          <div className="flex justify-center items-center min-h-[60vh]">
+            <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+          </div>
+        ) : (
+          <div className="w-full h-full flex flex-col lg:flex-row gap-6 lg:gap-8 px-4 sm:px-6 lg:px-8 pb-8 justify-center items-center">
+            {/* Left Section - Poll Creation */}
+            <div className="flex-1 min-w-0 max-w-md flex flex-col items-center">
             <form onSubmit={handleSavePoll} className="space-y-5 w-full">
               {/* Poll Title */}
               <div className="text-center">
@@ -412,10 +526,10 @@ export default function CreatePollPage() {
                     {isLoading ? (
                       <>
                         <Loader2 className="h-4 w-4 animate-spin" />
-                        Creating...
+                        {isEditMode ? 'Updating...' : 'Creating...'}
                       </>
                     ) : (
-                      'Save Poll'
+                      isEditMode ? 'Update Poll' : 'Save Poll'
                     )}
                   </Button>
                 </div>
@@ -423,6 +537,7 @@ export default function CreatePollPage() {
             </form>
           </div>
         </div>
+        )}
 
         {/* Image Popup Modal */}
         {selectedImagePopup && (

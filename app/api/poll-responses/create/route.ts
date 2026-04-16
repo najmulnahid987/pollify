@@ -6,7 +6,7 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
     console.log('Poll response request body:', body)
-    const { pollId, userId, selectedOptions, voterName, voterEmail, feedbackMessage } = body
+    const { pollId, userId, selectedOptions, voterName, voterEmail, feedbackMessage, rating } = body
 
     // Validate required fields
     if (!pollId || !voterEmail) {
@@ -63,6 +63,7 @@ export async function POST(request: NextRequest) {
           voter_name: voterName,
           voter_email: voterEmail,
           feedback_message: feedbackMessage,
+          rating: rating || null,
         },
       ])
       .select()

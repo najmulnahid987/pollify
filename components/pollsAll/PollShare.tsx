@@ -1,19 +1,71 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Copy, Download, Globe, Lock, QrCode, Share2 } from 'lucide-react';
+import { QRCodeCanvas } from 'qrcode.react';
+import { createClient } from '@/lib/supabase';
 
-function PollShare({ pollId = 'x8j29s' }) {
+interface PollShareProps {
+  pollId: string;
+  userId: string;
+}
+
+function PollShare({ pollId, userId }: PollShareProps) {
   const [visibility, setVisibility] = useState<'public' | 'private'>('public');
   const [copied, setCopied] = useState(false);
-  const [confirmDialog, setConfirmDialog] = useState<{ isOpen: boolean; newVisibility: 'public' | 'private' | null }>({
-    isOpen: false,
-    newVisibility: null,
-  });
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [showSuccess, setShowSuccess] = useState(false);
+  const [pendingVisibility, setPendingVisibility] = useState<'public' | 'private' | null>(null);
+  const [showConfirmation, setShowConfirmation] = useState(false);
+  const qrRef = useRef<HTMLDivElement>(null);
   
-  const pollLink = `https://pollify.app/p/${pollId}`;
+  // Determine the base URL (localhost for dev, production domain for prod)
+  const getBaseUrl = () => {
+    if (typeof window === 'undefined') {
+      return 'https://pollify.app';
+    }
+    const hostname = window.location.hostname;
+    if (hostname === 'localhost' || hostname === '127.0.0.1') {
+      return `http://${hostname}:3000`;
+    }
+    return 'https://pollify.app';
+  };
+
+  const pollLink = `${getBaseUrl()}/p/${pollId}`;
+
+  // Fetch current poll visibility on mount
+  useEffect(() => {
+    const fetchPollVisibility = async () => {
+      try {
+        setIsLoading(true);
+        const supabase = createClient();
+        
+        const { data, error: fetchError } = await supabase
+          .from('polls')
+          .select('visibility')
+          .eq('id', pollId)
+          .single();
+
+        if (fetchError) {
+          console.error('Error fetching poll visibility:', fetchError);
+          setError('Failed to load poll settings');
+          return;
+        }
+
+        setVisibility(data?.visibility || 'public');
+      } catch (err) {
+        console.error('Error:', err);
+        setError('Failed to load poll settings');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchPollVisibility();
+  }, [pollId]);
 
   const handleCopyLink = async () => {
     try {
@@ -42,24 +94,103 @@ function PollShare({ pollId = 'x8j29s' }) {
     }
   };
 
-  const handleDownloadQR = () => {
-    console.log('Downloading QR code...');
-  };
+  const handleDownloadQR = async () => {
+    if (!qrRef.current) return;
 
-  const handleVisibilityChange = (newVisibility: 'public' | 'private') => {
-    setConfirmDialog({ isOpen: true, newVisibility });
-  };
+    try {
+      const canvas = qrRef.current.querySelector('canvas') as HTMLCanvasElement;
+      if (!canvas) {
+        setError('Failed to generate QR code image');
+        return;
+      }
 
-  const confirmVisibilityChange = () => {
-    if (confirmDialog.newVisibility) {
-      setVisibility(confirmDialog.newVisibility);
+      canvas.toBlob((blob) => {
+        if (!blob) {
+          setError('Failed to create QR code blob');
+          return;
+        }
+
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `poll-${pollId}-qr.png`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+      });
+    } catch (err) {
+      console.error('Error downloading QR code:', err);
+      setError('Failed to download QR code');
     }
-    setConfirmDialog({ isOpen: false, newVisibility: null });
+  };
+
+  const handleVisibilityChange = async (newVisibility: 'public' | 'private') => {
+    if (newVisibility === visibility) return;
+    
+    // Show confirmation dialog
+    setPendingVisibility(newVisibility);
+    setShowConfirmation(true);
+  };
+
+  const confirmVisibilityChange = async () => {
+    if (!pendingVisibility) return;
+
+    // Validate pollId before proceeding
+    if (!pollId || pollId.trim() === '') {
+      setError('Poll ID is missing. Please refresh the page.');
+      setPendingVisibility(null);
+      return;
+    }
+
+    try {
+      setError(null);
+      setShowConfirmation(false);
+
+      // Optimistic update
+      setVisibility(pendingVisibility);
+
+      // Use Supabase client directly instead of API endpoint
+      const supabase = createClient();
+      
+      const { error: updateError } = await supabase
+        .from('polls')
+        .update({ visibility: pendingVisibility })
+        .eq('id', pollId)
+        .select();
+
+      if (updateError) {
+        throw new Error(updateError.message || 'Failed to update visibility');
+      }
+
+      setShowSuccess(true);
+      setTimeout(() => setShowSuccess(false), 3000);
+      setPendingVisibility(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update visibility');
+      // Revert optimistic update
+      setVisibility(visibility === 'public' ? 'private' : 'public');
+      setPendingVisibility(null);
+    }
   };
 
   const cancelVisibilityChange = () => {
-    setConfirmDialog({ isOpen: false, newVisibility: null });
+    setShowConfirmation(false);
+    setPendingVisibility(null);
   };
+
+  // Guard: Don't render if pollId is missing
+  if (!pollId || pollId.trim() === '') {
+    return (
+      <div className="bg-white dark:bg-slate-950 flex flex-col font-display antialiased text-slate-900 dark:text-slate-100 p-3 sm:p-4">
+        <div className="w-full">
+          <p className="text-xs sm:text-sm text-red-500">
+            Error: Poll ID is missing. Please refresh the page.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-white dark:bg-slate-950 flex flex-col font-display antialiased text-slate-900 dark:text-slate-100 p-3 sm:p-4">
@@ -149,14 +280,13 @@ function PollShare({ pollId = 'x8j29s' }) {
               QR Code
             </h3>
             <div className="flex flex-col items-center gap-3">
-              <div className="p-2 bg-white dark:bg-slate-800 rounded border border-slate-200 dark:border-slate-700">
-                <div className="w-24 h-24 bg-white flex items-center justify-center rounded">
-                  <img
-                    alt="QR Code"
-                    className="w-full h-full object-contain"
-                    src="https://lh3.googleusercontent.com/aida-public/AB6AXuCZhRrkL6k_5W02KL1JDkkRnrF2_yJm9uc9g_f-bDV-4xfmSZEejWkL4CP7xjWg0K_aSbF1Q9LJuloTtbZLeo7quisMvfNpGx-9PcvWFxy69k4_6J66tnfZqKCclxj6Sf-n6AE5AHjm5ciopvaos-lqZ3wawTd0lWJCvZzjL46lxZSOXSi1U7j1T5B9EDu7tL6rhKu6ClEEWAFuS6MYeLeDsCZhX_3ExlJNfk_E-6Oj5N3Xjf1XltgN9k1nANo-oRAnReYui8dQDys"
-                  />
-                </div>
+              <div className="p-2 bg-white dark:bg-slate-800 rounded border border-slate-200 dark:border-slate-700" ref={qrRef}>
+                <QRCodeCanvas
+                  value={pollLink}
+                  size={160}
+                  level="H"
+                  includeMargin={true}
+                />
               </div>
               <Button
                 onClick={handleDownloadQR}
@@ -173,37 +303,47 @@ function PollShare({ pollId = 'x8j29s' }) {
       </div>
 
       {/* Confirmation Dialog */}
-      {confirmDialog.isOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm flex items-center justify-center z-50">
-          <div className="bg-white dark:bg-slate-950 rounded-lg shadow-lg p-6 max-w-sm mx-4">
-            <h2 className="text-sm font-semibold text-slate-900 dark:text-white mb-2">
-              Confirm Change
-            </h2>
-            <p className="text-sm text-slate-600 dark:text-slate-400 mb-6">
-              Are you sure you want to make the poll{' '}
-              <span className="font-semibold">
-                {confirmDialog.newVisibility === 'public' ? 'public' : 'private'}
-              </span>
-              ?
+      {showConfirmation && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-lg shadow-lg max-w-sm w-full p-6">
+            <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-2">
+              Change Poll Visibility?
+            </h3>
+            <p className="text-sm text-slate-600 dark:text-slate-300 mb-4">
+              {pendingVisibility === 'public'
+                ? 'Make this poll PUBLIC? Anyone will be able to find and respond to it.'
+                : 'Make this poll PRIVATE? Only people with the link and you can access it.'}
             </p>
             <div className="flex gap-3 justify-end">
               <Button
                 onClick={cancelVisibilityChange}
                 variant="outline"
-                size="sm"
-                className="text-xs"
+                className="text-xs h-8"
               >
                 Cancel
               </Button>
               <Button
                 onClick={confirmVisibilityChange}
-                size="sm"
-                className="text-xs"
+                className="text-xs h-8"
               >
-                Confirm
+                Yes, Change to {pendingVisibility === 'public' ? 'PUBLIC' : 'PRIVATE'}
               </Button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Error/Success Messages */}
+      {error && (
+        <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg dark:bg-red-950 dark:border-red-800">
+          <p className="text-xs text-red-600 dark:text-red-400">✗ {error}</p>
+        </div>
+      )}
+      {showSuccess && (
+        <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg dark:bg-green-950 dark:border-green-800">
+          <p className="text-xs text-green-600 dark:text-green-400">
+            ✓ Poll is now {visibility === 'public' ? 'PUBLIC' : 'PRIVATE'}!
+          </p>
         </div>
       )}
     </div>

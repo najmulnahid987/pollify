@@ -53,8 +53,6 @@ export function Sidebar07() {
   const router = useRouter()
   const [hoveredPollId, setHoveredPollId] = useState<string | null>(null)
   const [pollsList, setPollsList] = useState<any[]>([])
-  const [renamingPollId, setRenamingPollId] = useState<string | null>(null)
-  const [newPollTitle, setNewPollTitle] = useState("")
   const [isSearchOpen, setIsSearchOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
 
@@ -103,54 +101,76 @@ export function Sidebar07() {
   const handleDeletePoll = async (id: string) => {
     try {
       const supabase = createClient()
-      const { error } = await supabase
+
+      // Step 1: Fetch poll data to get image URLs
+      const { data: pollData, error: fetchError } = await supabase
+        .from('polls')
+        .select('poll_image_url')
+        .eq('id', id)
+        .single()
+
+      if (fetchError) {
+        console.error('Error fetching poll:', fetchError)
+        return
+      }
+
+      // Step 2: Fetch poll options to get option image URLs
+      const { data: optionsData, error: optionsError } = await supabase
+        .from('poll_options')
+        .select('image_url')
+        .eq('poll_id', id)
+
+      if (optionsError) {
+        console.error('Error fetching poll options:', optionsError)
+      }
+
+      // Step 3: Delete poll banner image from storage
+      if (pollData?.poll_image_url) {
+        try {
+          // Extract filename from URL
+          const pollImagePath = pollData.poll_image_url.split('/').slice(-2).join('/')
+          await supabase.storage.from('poll-images').remove([pollImagePath])
+          console.log('Deleted poll banner image:', pollImagePath)
+        } catch (storageError) {
+          console.error('Error deleting poll image from storage:', storageError)
+        }
+      }
+
+      // Step 4: Delete option images from storage
+      if (optionsData && optionsData.length > 0) {
+        for (const option of optionsData) {
+          if (option.image_url) {
+            try {
+              const optionImagePath = option.image_url.split('/').slice(-2).join('/')
+              await supabase.storage.from('poll-option-images').remove([optionImagePath])
+              console.log('Deleted option image:', optionImagePath)
+            } catch (storageError) {
+              console.error('Error deleting option image from storage:', storageError)
+            }
+          }
+        }
+      }
+
+      // Step 5: Delete poll from database (this will cascade delete options and responses)
+      const { error: deleteError } = await supabase
         .from('polls')
         .delete()
         .eq('id', id)
 
-      if (error) {
-        console.error('Error deleting poll:', error)
+      if (deleteError) {
+        console.error('Error deleting poll from database:', deleteError)
       } else {
         setPollsList(pollsList.filter((poll) => poll.id !== id))
         setHoveredPollId(null)
+        console.log('Poll deleted successfully')
       }
     } catch (error) {
       console.error('Error deleting poll:', error)
     }
   }
 
-  const handleRenamePoll = (id: string) => {
-    const poll = pollsList.find((p) => p.id === id)
-    if (poll) {
-      setRenamingPollId(id)
-      setNewPollTitle(poll.title)
-    }
-  }
-
-  const handleSaveRename = async (id: string) => {
-    if (newPollTitle.trim()) {
-      try {
-        const supabase = createClient()
-        const { error } = await supabase
-          .from('polls')
-          .update({ title: newPollTitle })
-          .eq('id', id)
-
-        if (error) {
-          console.error('Error updating poll:', error)
-        } else {
-          setPollsList(
-            pollsList.map((poll) =>
-              poll.id === id ? { ...poll, title: newPollTitle } : poll
-            )
-          )
-        }
-      } catch (error) {
-        console.error('Error updating poll:', error)
-      }
-    }
-    setRenamingPollId(null)
-    setNewPollTitle("")
+  const handleEditPoll = (id: string) => {
+    router.push(`/dashboard?pollId=${id}`)
   }
 
   return (
@@ -234,62 +254,40 @@ export function Sidebar07() {
               ) : (
                 pollsList.map((poll) => (
                   <SidebarMenuItem key={poll.id} className="group">
-                    {renamingPollId === poll.id ? (
-                      <div className="flex items-center gap-2 px-2 py-1.5">
-                        <input
-                          type="text"
-                          value={newPollTitle}
-                          onChange={(e) => setNewPollTitle(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") handleSaveRename(poll.id)
-                            if (e.key === "Escape") setRenamingPollId(null)
-                          }}
-                          autoFocus
-                          className="flex-1 px-2 py-1 text-sm border rounded bg-sidebar-accent text-sidebar-accent-foreground outline-none"
-                        />
-                        <button
-                          onClick={() => handleSaveRename(poll.id)}
-                          className="text-xs px-2 py-1 bg-green-600 text-white rounded hover:bg-green-700"
-                        >
-                          Save
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-sidebar-accent group/item">
-                        <a
-                          href={`/dashboard/poll/${poll.id}`}
-                          className="flex-1 text-sm truncate"
-                        >
-                          <span className="truncate">{poll.title}</span>
-                        </a>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <button
-                              className="p-1 rounded opacity-0 group-hover/item:opacity-100 hover:bg-sidebar-accent/80 transition-opacity"
-                              onClick={(e) => e.preventDefault()}
-                            >
-                              <MoreHorizontal className="size-4" />
-                            </button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-40">
-                            <DropdownMenuItem
-                              onClick={() => handleRenamePoll(poll.id)}
-                            >
-                              <Edit2 className="mr-2 size-4" />
-                              <span>Rename</span>
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              onClick={() => handleDeletePoll(poll.id)}
-                              className="text-red-600"
-                            >
-                              <Trash2 className="mr-2 size-4" />
-                              <span>Delete</span>
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
-                    )}
+                    <div className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-sidebar-accent group/item">
+                      <a
+                        href={`/dashboard/poll/${poll.id}`}
+                        className="flex-1 text-sm truncate"
+                      >
+                        <span className="truncate">{poll.title}</span>
+                      </a>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <button
+                            className="p-1 rounded opacity-0 group-hover/item:opacity-100 hover:bg-sidebar-accent/80 transition-opacity"
+                            onClick={(e) => e.preventDefault()}
+                          >
+                            <MoreHorizontal className="size-4" />
+                          </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-40">
+                          <DropdownMenuItem
+                            onClick={() => handleEditPoll(poll.id)}
+                          >
+                            <Edit2 className="mr-2 size-4" />
+                            <span>Edit</span>
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            onClick={() => handleDeletePoll(poll.id)}
+                            className="text-red-600"
+                          >
+                            <Trash2 className="mr-2 size-4" />
+                            <span>Delete</span>
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                   </SidebarMenuItem>
                 ))
               )}

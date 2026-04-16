@@ -20,6 +20,7 @@ interface Poll {
   created_at?: string
   vote_count?: number
   is_public?: boolean
+  visibility?: 'public' | 'private'
   share_without_image?: boolean
   share_without_options?: boolean
   allow_multiple?: boolean
@@ -34,7 +35,7 @@ interface Poll {
 function Page() {
   const params = useParams()
   const router = useRouter()
-  const pollId = params.pollId as string
+  const pollId = params?.pollId ? String(params.pollId) : ''
   const [previewMode, setPreviewMode] = useState<'pc' | 'mobile'>('pc')
   const [poll, setPoll] = useState<Poll | null>(null)
   const [userId, setUserId] = useState<string>('')
@@ -52,6 +53,7 @@ function Page() {
           setUserId(user.id)
         }
         
+        // First, try to fetch poll by ID without user_id filter
         const { data, error } = await supabase
           .from('polls')
           .select('*')
@@ -61,7 +63,8 @@ function Page() {
         if (error) {
           console.error('Error fetching poll:', error)
           setPoll(null)
-        } else {
+        } else if (data) {
+          console.log('Poll fetched successfully:', data)
           // Fetch poll options
           const { data: optionsData, error: optionsError } = await supabase
             .from('poll_options')
@@ -104,7 +107,7 @@ function Page() {
     )
   }
 
-  if (!poll) {
+  if (!poll || !pollId) {
     return (
       <div className="min-h-screen bg-white pt-20 flex items-center justify-center">
         <p className="text-gray-500 text-lg">Poll not found</p>
@@ -123,8 +126,6 @@ function Page() {
             <TabsTrigger value="result" className="text-xs py-1 px-2 cursor-pointer">Result</TabsTrigger>
             <TabsTrigger value="preview" className="text-xs py-1 px-2 cursor-pointer">Preview</TabsTrigger>
             <TabsTrigger value="share" className="text-xs py-1 px-2 cursor-pointer">Share</TabsTrigger>
-            <TabsTrigger value="edit" className="text-xs py-1 px-2 cursor-pointer">Edit</TabsTrigger>
-            <TabsTrigger value="chat" className="text-xs py-1 px-2 cursor-pointer">Chat</TabsTrigger>
           </TabsList>
           
           <TabsContent value="result" className="mt-2 flex-1 overflow-hidden">
@@ -242,19 +243,7 @@ function Page() {
           </TabsContent>
           
           <TabsContent value="share" className="mt-2">
-            <PollShare />
-          </TabsContent>
-
-          <TabsContent value="edit" className="mt-2">
-            <div className="p-2 border rounded-lg text-sm">
-              <p>Edit content goes here</p>
-            </div>
-          </TabsContent>
-
-          <TabsContent value="chat" className="mt-2">
-            <div className="p-2 border rounded-lg text-sm">
-              <p>Chat content goes here</p>
-            </div>
+            <PollShare pollId={pollId} userId={userId} />
           </TabsContent>
 
         </Tabs>

@@ -57,6 +57,7 @@ const PollPreviewTwo: React.FC<PollPreviewTwoProps> = ({
           voterName: formData.name || 'Anonymous',
           voterEmail: formData.email || 'anonymous@poll.local',
           feedbackMessage: formData.feedback,
+          rating: rating || 0,
         }),
       })
 
@@ -87,18 +88,20 @@ const PollPreviewTwo: React.FC<PollPreviewTwoProps> = ({
         {/* Feedback Form Card */}
         <div className="bg-white dark:bg-slate-900 rounded-lg shadow-lg shadow-slate-200/40 dark:shadow-none border border-slate-100 dark:border-slate-800 overflow-hidden">
           {/* Banner */}
-          <div className="relative h-32 w-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+          <div className="relative h-40 sm:h-48 md:h-56 w-full bg-gradient-to-br from-slate-200 to-slate-300 dark:from-slate-800 dark:to-slate-700 overflow-hidden">
             <div
               className="absolute inset-0 bg-cover bg-center"
               style={{
                 backgroundImage: `url("${bannerImage}")`,
               }}
             />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent" />
-            <div className="absolute bottom-4 left-4 right-4">
-              <h1 className="text-white text-lg font-bold leading-tight tracking-tight">
-                {title}
-              </h1>
+            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-black/10" />
+            <div className="absolute inset-0 flex items-end">
+              <div className="w-full p-4 sm:p-6 md:p-8">
+                <h1 className="text-white text-lg sm:text-xl md:text-2xl font-bold leading-tight tracking-tight drop-shadow-lg">
+                  {title}
+                </h1>
+              </div>
             </div>
           </div>
 
@@ -119,7 +122,7 @@ const PollPreviewTwo: React.FC<PollPreviewTwoProps> = ({
                     className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-0.5"
                     htmlFor="name"
                   >
-                    Full Name <span className="text-slate-300">(Optional)</span>
+                    Full Name
                   </label>
                   <input
                     className="w-full px-3 py-2 rounded-lg border-2 border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 text-slate-900 dark:text-slate-100 text-sm focus:outline-0 focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
@@ -136,7 +139,7 @@ const PollPreviewTwo: React.FC<PollPreviewTwoProps> = ({
                     className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-0.5"
                     htmlFor="email"
                   >
-                    Email Address <span className="text-slate-300">(Optional)</span>
+                    Email Address
                   </label>
                   <input
                     className="w-full px-3 py-2 rounded-lg border-2 border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 text-slate-900 dark:text-slate-100 text-sm focus:outline-0 focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
@@ -156,7 +159,7 @@ const PollPreviewTwo: React.FC<PollPreviewTwoProps> = ({
                   className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-0.5"
                   htmlFor="feedback"
                 >
-                  Detailed Feedback <span className="text-slate-300">(Optional)</span>
+                  Detailed Feedback
                 </label>
                 <textarea
                   className="w-full px-3 py-2 rounded-lg border-2 border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 text-slate-900 dark:text-slate-100 text-sm focus:outline-0 focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all resize-none"

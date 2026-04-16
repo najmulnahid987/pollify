@@ -21,13 +21,23 @@ function PollResult({ poll }: PollResultProps) {
   console.log('PollResult - poll data:', poll)
   console.log('PollResult - share_without_options:', poll?.share_without_options)
 
+  // Guard: Return error if poll is missing critical data
+  if (!poll || !poll.id) {
+    console.error('PollResult - poll or poll.id is missing')
+    return (
+      <div className="w-full h-full flex items-center justify-center">
+        <p className="text-red-500">Error: Poll data not found</p>
+      </div>
+    )
+  }
+
   // If share_without_options is true, show only UserOpinion (full width)
   // This means: User selected "Share Without Options" setting (feedback only mode)
   if (poll?.share_without_options === true) {
     console.log('Showing feedback-only layout (UserOpinion only)')
     return (
       <div className="w-full h-full overflow-hidden">
-        <UserOpinion poll={poll} />
+        <UserOpinion poll={{ id: poll.id, title: poll.title }} />
       </div>
     )
   }
@@ -39,12 +49,12 @@ function PollResult({ poll }: PollResultProps) {
     <div className="flex h-full overflow-hidden">
       {/* Left Section */}
       <div className="flex-1 pl-0 overflow-hidden">
-        <UserOpinion poll={poll} />
+        <UserOpinion poll={{ id: poll.id, title: poll.title }} />
       </div>
       
       {/* Right Section */}
       <div className="flex-1 pl-0 overflow-y-auto scrollbar-super-thin">
-        <ChartBarStacked />
+        <ChartBarStacked pollId={poll.id} />
       </div>
     </div>
   )

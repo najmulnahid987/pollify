@@ -116,6 +116,7 @@ export async function POST(request: Request) {
         share_without_options: settings.shareWithoutOptions || false,
         is_published: true,
         is_closed: false,
+        visibility: settings.visibility || 'public', // 'public' or 'private'
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       })
