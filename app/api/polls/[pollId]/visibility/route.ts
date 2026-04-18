@@ -3,7 +3,7 @@ import { cookies } from 'next/headers'
 
 export async function PATCH(
   request: Request,
-  { params }: { params: { pollId: string } }
+  { params }: { params: Promise<{ pollId: string }> }
 ) {
   try {
     // 1. Get authenticated user
@@ -47,7 +47,7 @@ export async function PATCH(
     const { data: poll, error: fetchError } = await supabase
       .from('polls')
       .select('id, user_id, visibility, is_published')
-      .eq('id', params.pollId)
+      .eq('id', (await params).pollId)
       .eq('user_id', user.id) // Only select if user is the owner
       .single()
 
@@ -69,7 +69,7 @@ export async function PATCH(
     const { data: updatedPoll, error: updateError } = await supabase
       .from('polls')
       .update(updateData)
-      .eq('id', params.pollId)
+      .eq('id', (await params).pollId)
       .eq('user_id', user.id) // Ensure we only update user's own polls
       .select()
       .single()
@@ -94,3 +94,4 @@ export async function PATCH(
     )
   }
 }
+

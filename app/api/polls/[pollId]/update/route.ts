@@ -58,16 +58,42 @@ export async function PUT(
     // 5. Upload new poll image if it's a base64 string (new image)
     if (pollImage.startsWith('data:')) {
       try {
-        // Convert base64 to buffer
-        const base64Data = pollImage.split(',')[1]
+        // Parse base64 data with proper error handling
+        const parts = pollImage.split(',')
+        if (parts.length !== 2) {
+          return Response.json(
+            { error: 'Invalid poll image format' },
+            { status: 400 }
+          )
+        }
+
+        const mimeMatch = parts[0].match(/:(.*?);/)
+        const mimeType = mimeMatch ? mimeMatch[1] : 'image/jpeg'
+        
+        const base64Data = parts[1]
+        if (!base64Data || !/^[A-Za-z0-9+/=]+$/.test(base64Data)) {
+          return Response.json(
+            { error: 'Invalid poll image data' },
+            { status: 400 }
+          )
+        }
+
         const buffer = Buffer.from(base64Data, 'base64')
+
+        // Validate buffer size (max 5MB)
+        if (buffer.length > 5 * 1024 * 1024) {
+          return Response.json(
+            { error: 'Poll image exceeds 5MB limit' },
+            { status: 400 }
+          )
+        }
 
         const pollImagePath = `polls/${user.id}/poll-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
 
         const { data: pollImageData, error: pollImageError } = await supabase.storage
           .from('poll-images')
           .upload(pollImagePath, buffer, {
-            contentType: 'image/jpeg',
+            contentType: mimeType,
           })
 
         if (!pollImageError && pollImageData) {
@@ -99,25 +125,50 @@ export async function PUT(
       }
     }
 
-    // 6. Process option images
+    // 6. Process option images - using parallel uploads
     const optionImageUrls: (string | null)[] = []
 
     if (!settings.shareWithoutOptions && options.length > 0) {
-      for (let i = 0; i < options.length; i++) {
-        const option = options[i]
-
+      // Create upload promises for all options
+      const uploadPromises = options.map(async (option, i) => {
         if (option.image && option.image.startsWith('data:')) {
           try {
-            // Convert base64 to buffer
-            const base64Data = option.image.split(',')[1]
+            // Parse base64 data with proper error handling
+            const parts = option.image.split(',')
+            if (parts.length !== 2) {
+              console.error(`Invalid base64 format for option image ${i}`)
+              return null
+            }
+
+            const mimeMatch = parts[0].match(/:(.*?);/)
+            const mimeType = mimeMatch ? mimeMatch[1] : 'image/jpeg'
+            
+            const base64Data = parts[1]
+            if (!base64Data) {
+              console.error(`Empty base64 data for option image ${i}`)
+              return null
+            }
+
+            // Validate base64 format
+            if (!/^[A-Za-z0-9+/=]+$/.test(base64Data)) {
+              console.error(`Invalid base64 characters in option image ${i}`)
+              return null
+            }
+
             const buffer = Buffer.from(base64Data, 'base64')
+            
+            // Validate buffer size (max 5MB per image)
+            if (buffer.length > 5 * 1024 * 1024) {
+              console.error(`Option image ${i} exceeds 5MB limit`)
+              return null
+            }
 
             const optionImagePath = `polls/${user.id}/option-${Date.now()}-${i}-${Math.random().toString(36).substr(2, 9)}`
 
             const { data: optionImageData, error: optionImageError } = await supabase.storage
               .from('poll-option-images')
               .upload(optionImagePath, buffer, {
-                contentType: 'image/jpeg',
+                contentType: mimeType,
               })
 
             if (!optionImageError && optionImageData) {
@@ -125,21 +176,25 @@ export async function PUT(
                 .from('poll-option-images')
                 .getPublicUrl(optionImageData.path)
 
-              optionImageUrls.push(optionImageUrlData.publicUrl)
+              return optionImageUrlData.publicUrl
             } else {
-              optionImageUrls.push(null)
+              console.error(`Upload error for option ${i}:`, optionImageError?.message)
+              return null
             }
           } catch (error) {
             console.error(`Failed to process option image ${i}:`, error)
-            optionImageUrls.push(null)
+            return null
           }
         } else if (option.image && !option.image.startsWith('data:')) {
-          // Existing URL image
-          optionImageUrls.push(option.image)
-        } else {
-          optionImageUrls.push(null)
+          // Existing URL image - return as is
+          return option.image
         }
-      }
+        return null
+      })
+
+      // Wait for all uploads to complete in parallel
+      const results = await Promise.all(uploadPromises)
+      optionImageUrls.push(...results)
     }
 
     // 7. Update poll record

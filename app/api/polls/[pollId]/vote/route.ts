@@ -2,11 +2,11 @@ import { createSupabaseServerClient } from '@/lib/supabase-server'
 
 export async function POST(
   request: Request,
-  { params }: { params: { pollId: string } }
+  { params }: { params: Promise<{ pollId: string }> }
 ) {
   try {
     const supabase = await createSupabaseServerClient()
-    const pollId = params.pollId
+    const { pollId } = await params
 
     // Parse request body
     const body = await request.json()

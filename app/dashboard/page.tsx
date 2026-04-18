@@ -15,6 +15,8 @@ interface PollOption {
   image: string | null
 }
 
+const MAX_TOTAL_UPLOAD_BYTES = 45 * 1024 * 1024
+
 export default function CreatePollPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -128,22 +130,104 @@ export default function CreatePollPage() {
     setOptions(newOptions)
   }
 
-  const handleImageUpload = (index: number, file: File) => {
-    const reader = new FileReader()
-    reader.onloadend = () => {
-      const newOptions = [...options]
-      newOptions[index].image = reader.result as string
-      setOptions(newOptions)
+  const validateImageFile = (file: File): string | null => {
+    // Check file size (max 5MB)
+    const maxSize = 5 * 1024 * 1024
+    if (file.size > maxSize) {
+      return `Image must be less than 5MB (current: ${(file.size / 1024 / 1024).toFixed(2)}MB)`
     }
-    reader.readAsDataURL(file)
+
+    // Check file type
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
+    if (!allowedTypes.includes(file.type)) {
+      return `Invalid image type. Allowed: JPEG, PNG, GIF, WebP`
+    }
+
+    return null
   }
 
-  const handlePollImageUpload = (file: File) => {
-    const reader = new FileReader()
-    reader.onloadend = () => {
-      setPollImage(reader.result as string)
+  const fileToDataUrl = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(reader.result as string)
+      reader.onerror = () => reject(new Error('Failed to read image file'))
+      reader.readAsDataURL(file)
+    })
+  }
+
+  const compressImageToDataUrl = async (
+    file: File,
+    maxDimension = 1280,
+    quality = 0.8
+  ): Promise<string> => {
+    const originalDataUrl = await fileToDataUrl(file)
+
+    // GIF animation should be preserved; avoid canvas re-encode for GIF.
+    if (file.type === 'image/gif') {
+      return originalDataUrl
     }
-    reader.readAsDataURL(file)
+
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const image = new Image()
+      image.onload = () => resolve(image)
+      image.onerror = () => reject(new Error('Failed to load image for compression'))
+      image.src = originalDataUrl
+    })
+
+    let width = img.width
+    let height = img.height
+
+    if (width > maxDimension || height > maxDimension) {
+      const ratio = Math.min(maxDimension / width, maxDimension / height)
+      width = Math.max(1, Math.round(width * ratio))
+      height = Math.max(1, Math.round(height * ratio))
+    }
+
+    const canvas = document.createElement('canvas')
+    canvas.width = width
+    canvas.height = height
+
+    const ctx = canvas.getContext('2d')
+    if (!ctx) {
+      throw new Error('Failed to process image')
+    }
+
+    ctx.drawImage(img, 0, 0, width, height)
+    return canvas.toDataURL('image/jpeg', quality)
+  }
+
+  const handleImageUpload = async (index: number, file: File) => {
+    const error = validateImageFile(file)
+    if (error) {
+      setError(error)
+      return
+    }
+
+    try {
+      const compressedDataUrl = await compressImageToDataUrl(file)
+      const newOptions = [...options]
+      newOptions[index].image = compressedDataUrl
+      setOptions(newOptions)
+      setError(null)
+    } catch {
+      setError('Failed to process option image')
+    }
+  }
+
+  const handlePollImageUpload = async (file: File) => {
+    const error = validateImageFile(file)
+    if (error) {
+      setError(error)
+      return
+    }
+
+    try {
+      const compressedDataUrl = await compressImageToDataUrl(file)
+      setPollImage(compressedDataUrl)
+      setError(null)
+    } catch {
+      setError('Failed to process poll image')
+    }
   }
 
   const removePollImage = () => {
@@ -163,16 +247,69 @@ export default function CreatePollPage() {
     })
   }
 
-  const convertBase64ToFile = (base64: string, filename: string): File => {
-    const arr = base64.split(',')
-    const mime = arr[0].match(/:(.*?);/)?.[1] || 'image/jpeg'
-    const bstr = atob(arr[1])
-    const n = bstr.length
-    const u8arr = new Uint8Array(n)
-    for (let i = 0; i < n; i++) {
-      u8arr[i] = bstr.charCodeAt(i)
+  const convertBase64ToFile = (base64: string, filename: string): File | null => {
+    try {
+      // Validate base64 format
+      if (!base64 || typeof base64 !== 'string') {
+        console.error('Invalid base64: not a string or empty', typeof base64)
+        return null
+      }
+
+      if (!base64.includes(',')) {
+        console.error('Invalid base64 format: missing comma separator')
+        return null
+      }
+
+      const parts = base64.split(',')
+      if (parts.length !== 2) {
+        console.error('Invalid base64 format: incorrect number of parts', parts.length)
+        return null
+      }
+
+      // Extract MIME type and base64 data
+      const mimeMatch = parts[0].match(/:(.*?);/)
+      const mime = mimeMatch ? mimeMatch[1] : 'image/jpeg'
+      const base64Data = parts[1]
+
+      if (!base64Data || base64Data.trim() === '') {
+        console.error('Invalid base64: empty data')
+        return null
+      }
+
+      // Validate base64 characters
+      if (!/^[A-Za-z0-9+/=\s]*$/.test(base64Data)) {
+        console.error('Invalid base64: contains invalid characters')
+        return null
+      }
+
+      // Clean up base64 data (remove whitespace)
+      const cleanedBase64 = base64Data.replace(/\s/g, '')
+
+      if (cleanedBase64.length === 0) {
+        console.error('Invalid base64: empty after cleaning')
+        return null
+      }
+
+      try {
+        // Try to decode base64
+        const bstr = atob(cleanedBase64)
+        const n = bstr.length
+        const u8arr = new Uint8Array(n)
+        for (let i = 0; i < n; i++) {
+          u8arr[i] = bstr.charCodeAt(i)
+        }
+        
+        const file = new File([u8arr], filename, { type: mime })
+        console.log(`Successfully created file: ${filename}, size: ${file.size} bytes, type: ${mime}`)
+        return file
+      } catch (atobError) {
+        console.error('Failed to decode base64:', atobError)
+        return null
+      }
+    } catch (error) {
+      console.error('Error converting base64 to file:', error)
+      return null
     }
-    return new File([u8arr], filename, { type: mime })
   }
 
   const handleSavePoll = async (e: React.FormEvent) => {
@@ -227,29 +364,85 @@ export default function CreatePollPage() {
         router.push(`/dashboard/poll/${pollId}`)
       } else {
         // Create new poll
-        const formData = new FormData()
-        formData.append('title', title)
-        formData.append('description', description)
-        
-        // Convert base64 poll image to File
-        const pollImageFile = convertBase64ToFile(pollImage, `poll-${Date.now()}.jpg`)
-        formData.append('pollImage', pollImageFile)
+        // Validate image before proceeding
+        if (!pollImage || typeof pollImage !== 'string') {
+          throw new Error('Poll image is invalid or missing')
+        }
 
-        // Add options data
-        formData.append('options', JSON.stringify(options))
+        console.log('Converting poll image to file...')
+        const pollImageFile = convertBase64ToFile(pollImage, `poll-${Date.now()}.jpg`)
+        if (!pollImageFile) {
+          throw new Error('Failed to process poll image - the image data may be corrupted or in an unsupported format. Please try uploading a different image.')
+        }
+        console.log('Poll image file created:', { size: pollImageFile.size, type: pollImageFile.type })
+
+        const formDataObj = new FormData()
+        formDataObj.append('title', title)
+        formDataObj.append('description', description)
         
         // Add settings data
-        formData.append('settings', JSON.stringify(settings))
+        formDataObj.append('settings', JSON.stringify(settings))
+        
+        // Add poll image
+        formDataObj.append('pollImage', pollImageFile)
+
+        // Prepare options with only text (no base64 data)
+        const optionsForServer = options.map(opt => ({
+          text: opt.text || ''
+          // NOTE: We do NOT include image data here - it's sent separately as files
+        }))
+        formDataObj.append('options', JSON.stringify(optionsForServer))
+        
+        console.log('Options JSON size:', JSON.stringify(optionsForServer).length, 'bytes')
+
+        // Add option images as separate File entries (only if they exist)
+        console.log('Processing option images...')
+        let totalUploadBytes = pollImageFile.size
+        for (let i = 0; i < options.length; i++) {
+          const option = options[i]
+          if (option.image && option.image.startsWith('data:')) {
+            try {
+              console.log(`Converting option ${i} image to file...`)
+              const optionImageFile = convertBase64ToFile(option.image, `option-${i}.jpg`)
+              if (optionImageFile) {
+                totalUploadBytes += optionImageFile.size
+                formDataObj.append(`optionImage_${i}`, optionImageFile)
+                console.log(`Option ${i} image added:`, { size: optionImageFile.size, type: optionImageFile.type })
+              } else {
+                console.warn(`Option ${i} image conversion returned null`)
+              }
+            } catch (error) {
+              console.error(`Failed to convert option ${i} image:`, error)
+            }
+          }
+        }
+
+        if (totalUploadBytes > MAX_TOTAL_UPLOAD_BYTES) {
+          throw new Error('Total image upload is too large. Please use smaller images or fewer images per poll.')
+        }
+
+        console.log('Creating poll with', optionsForServer.length, 'options')
+        console.log('FormData ready, sending to API...')
+        console.log('FormData entries count:', Array.from(formDataObj.entries()).length)
 
         // Call API endpoint
         const response = await fetch('/api/polls/create', {
           method: 'POST',
-          body: formData,
+          body: formDataObj,
         })
 
         if (!response.ok) {
-          const errorData = await response.json()
-          throw new Error(errorData.error || 'Failed to create poll')
+          let errorMsg = 'Failed to create poll'
+          try {
+            const errorData = await response.json()
+            errorMsg = errorData.error || errorMsg
+            if (errorData.details) {
+              errorMsg += `: ${errorData.details}`
+            }
+          } catch {
+            errorMsg = `Server error: ${response.status} ${response.statusText}`
+          }
+          throw new Error(errorMsg)
         }
 
         const { pollId: newPollId } = await response.json()
@@ -474,7 +667,7 @@ export default function CreatePollPage() {
                   <Label htmlFor="allow-multiple-choices" className="font-semibold text-gray-900 cursor-pointer block text-sm">
                     Allow multiple choices
                   </Label>
-                  <p className="text-sm text-gray-600 mt-1">Voters can select more than one option.</p>
+                  <p className="text-sm text-gray-600 mt-1">Multiple selections are allowed.</p>
                 </div>
               </div>
 
@@ -490,7 +683,7 @@ export default function CreatePollPage() {
                   <Label htmlFor="share-without-image" className="font-semibold text-gray-900 cursor-pointer block text-sm">
                     Share without image
                   </Label>
-                  <p className="text-sm text-gray-600 mt-1">You don't need to upload an image for every option.</p>
+                  <p className="text-sm text-gray-600 mt-1">Image upload is optional for each option.</p>
                 </div>
               </div>
 
@@ -506,7 +699,7 @@ export default function CreatePollPage() {
                   <Label htmlFor="share-without-options" className="font-semibold text-gray-900 cursor-pointer block text-sm">
                     Share Without Options
                   </Label>
-                  <p className="text-sm text-gray-600 mt-1">Users can quickly share feedback by providing their name, email</p>
+                  <p className="text-sm text-gray-600 mt-1">Voters can quickly share feedback by providing their name, email</p>
                 </div>
               </div>
 

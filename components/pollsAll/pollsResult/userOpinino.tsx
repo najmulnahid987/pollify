@@ -12,7 +12,6 @@ import {
 	DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { supabaseClient } from '@/lib/supabase';
-import jsPDF from 'jspdf';
 
 const scrollbarStyles = `
 	.hover-scrollbar {
@@ -204,8 +203,9 @@ export default function UserOpinion({ poll }: UserOpinionProps) {
 		setFilteredFeedback(filtered);
 	};
 
-	const handleExport = () => {
+	const handleExport = async () => {
 		// Create PDF
+		const { jsPDF } = await import('jspdf');
 		const pdf = new jsPDF();
 		const pageWidth = pdf.internal.pageSize.getWidth();
 		const pageHeight = pdf.internal.pageSize.getHeight();

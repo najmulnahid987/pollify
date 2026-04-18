@@ -14,34 +14,102 @@ export async function POST(request: Request) {
       return Response.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // 2. Parse FormData
-    const formData = await request.formData()
+    // 2. Parse FormData with enhanced error handling
+    let formData
+    try {
+      console.log('Attempting to parse FormData...')
+      console.log('Request headers:', {
+        contentType: request.headers.get('content-type'),
+        contentLength: request.headers.get('content-length'),
+      })
+      formData = await request.formData()
+      console.log('FormData parsed successfully')
+    } catch (formDataError: any) {
+      console.error('FormData parsing error:', formDataError)
+      console.error('Error details:', {
+        message: formDataError?.message,
+        name: formDataError?.name,
+        stack: formDataError?.stack
+      })
+      return Response.json(
+        { 
+          error: 'Invalid request format',
+          details: `Unable to parse form data: ${formDataError?.message || 'Unknown error'}. Please ensure images are properly uploaded.`
+        },
+        { status: 400 }
+      )
+    }
+
     const title = formData.get('title') as string
     const description = formData.get('description') as string
     const pollImageFile = formData.get('pollImage') as File
     const optionsJson = formData.get('options') as string
     const settingsJson = formData.get('settings') as string
 
+    // Log what we received
+    console.log('FormData entries received:', {
+      hasTitle: !!title,
+      hasDescription: !!description,
+      hasPollImage: !!pollImageFile,
+      hasOptions: !!optionsJson,
+      hasSettings: !!settingsJson,
+      pollImageType: pollImageFile?.type,
+      pollImageSize: pollImageFile?.size,
+      allKeys: Array.from(formData.keys())
+    })
+
     // 3. Validate required fields
-    if (!title) {
+    if (!title || !title.trim()) {
       return Response.json(
         { error: 'Poll title is required' },
         { status: 400 }
       )
     }
 
-    if (!pollImageFile) {
+    if (!pollImageFile || !(pollImageFile instanceof File)) {
+      console.error('Poll image file missing or invalid', { pollImageFile })
       return Response.json(
-        { error: 'Poll image is required' },
+        { error: 'Poll image is required and must be a valid image file' },
         { status: 400 }
       )
     }
 
-    const options = JSON.parse(optionsJson || '[]')
-    const settings = JSON.parse(settingsJson || '{}')
+    // Validate file size
+    if (pollImageFile.size > 5 * 1024 * 1024) {
+      return Response.json(
+        { error: 'Poll image exceeds 5MB limit' },
+        { status: 400 }
+      )
+    }
+
+    let options: any[], settings: any
+    try {
+      options = JSON.parse(optionsJson || '[]')
+      settings = JSON.parse(settingsJson || '{}')
+    } catch (parseError) {
+      console.error('JSON parsing error:', parseError)
+      return Response.json(
+        { error: 'Invalid options or settings format' },
+        { status: 400 }
+      )
+    }
 
     // 4. Upload poll header image
+    console.log('Poll image file info:', {
+      size: pollImageFile.size,
+      type: pollImageFile.type,
+      name: pollImageFile.name,
+    })
+
     const pollImageBuffer = await pollImageFile.arrayBuffer()
+    
+    if (pollImageBuffer.byteLength === 0) {
+      return Response.json(
+        { error: 'Poll image file is empty' },
+        { status: 400 }
+      )
+    }
+
     const pollImagePath = `polls/${user.id}/poll-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
 
     const { data: pollImageData, error: pollImageError } = await supabase.storage
@@ -62,18 +130,26 @@ export async function POST(request: Request) {
       .from('poll-images')
       .getPublicUrl(pollImageData.path)
 
-    // 5. Upload option images (only if not in feedback mode)
+    // 5. Upload option images (only if not in feedback mode) - using parallel uploads
     const optionImageUrls: (string | null)[] = []
 
     if (!settings.shareWithoutOptions && options.length > 0) {
-      for (let i = 0; i < options.length; i++) {
-        const option = options[i]
+      // Create upload promises for all option images from FormData
+      const uploadPromises = options.map(async (option: any, i: number) => {
+        // Try to get the option image file from formData
+        const optionImageFile = formData.get(`optionImage_${i}`) as File | null
 
-        if (option.image && option.image.startsWith('data:')) {
+        if (optionImageFile && optionImageFile instanceof File) {
           try {
-            // Convert base64 to buffer
-            const base64Data = option.image.split(',')[1]
-            const buffer = Buffer.from(base64Data, 'base64')
+            // File is already in the correct format, just upload it
+            console.log(`Uploading option ${i} image:`, optionImageFile.name, optionImageFile.size, 'bytes')
+            
+            const buffer = await optionImageFile.arrayBuffer()
+            
+            if (buffer.byteLength === 0) {
+              console.error(`Option image ${i} is empty`)
+              return null
+            }
 
             const optionImagePath = `polls/${user.id}/option-${Date.now()}-${i}-${Math.random().toString(36).substr(2, 9)}`
 
@@ -81,7 +157,7 @@ export async function POST(request: Request) {
               await supabase.storage
                 .from('poll-option-images')
                 .upload(optionImagePath, buffer, {
-                  contentType: 'image/jpeg', // Default, could detect from base64
+                  contentType: optionImageFile.type || 'image/jpeg',
                 })
 
             if (!optionImageError && optionImageData) {
@@ -89,18 +165,22 @@ export async function POST(request: Request) {
                 .from('poll-option-images')
                 .getPublicUrl(optionImageData.path)
 
-              optionImageUrls.push(optionImageUrlData.publicUrl)
+              return optionImageUrlData.publicUrl
             } else {
-              optionImageUrls.push(null)
+              console.error(`Upload error for option ${i}:`, optionImageError?.message)
+              return null
             }
           } catch (error) {
             console.error(`Failed to process option image ${i}:`, error)
-            optionImageUrls.push(null)
+            return null
           }
-        } else {
-          optionImageUrls.push(null)
         }
-      }
+        return null
+      })
+
+      // Wait for all uploads to complete in parallel
+      const results = await Promise.all(uploadPromises)
+      optionImageUrls.push(...results)
     }
 
     // 6. Insert poll record
